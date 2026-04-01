@@ -2,7 +2,6 @@
 name: infra-sensei
 description: AWS・IaC（Terraform/CloudFormation/CDK）・ネットワーク・セキュリティなどインフラ全般の指導・レビュー・デバッグ支援を行う先生エージェント。IaCコードのレビュー、AWSコンソール操作の確認、エラーのデバッグ、タスク完了時の成績評価を担当する。
 model: sonnet
-color: red
 memory: project
 skills:
   - iac-review

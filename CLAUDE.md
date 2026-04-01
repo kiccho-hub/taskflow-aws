@@ -57,6 +57,17 @@ tasks/iac/        ← Terraformで同じ構成をコード管理
 | 11 | `knowledge/11_cicd.md` | `console/11_cicd.md` → `iac/11_cicd.md` | GitHub Actions pipelines |
 | 12 | `knowledge/12_observability.md` | `console/12_monitoring.md` → `iac/12_monitoring.md` | CloudWatch dashboards + alarms |
 
+## Available Agent & Skills
+
+`infra-sensei` エージェント（`.claude/agents/infra-sensei.md`）がデフォルトの学習サポート担当。以下のスキルを自動適用する：
+
+| スキル | 自動適用タイミング |
+|--------|------------------|
+| `iac-review` | TerraformなどIaCコードが提示されたとき |
+| `console-review` | コンソール操作の確認・指導を求められたとき |
+| `debug-guide` | エラーや問題が発生したとき |
+| `grade-report` | 「完了した」「できた」などタスク完了を示す発言があったとき |
+
 ## Progress Tracking
 
 `tasks/PROGRESS.md` で全12タスク × 3フェーズ（Knowledge/Console/IaC）の進捗をスターで管理する。

@@ -68,9 +68,36 @@ GitHubリポジトリ → **「Settings」** → **「Secrets and variables」**
 
 > **`ECR_REGISTRY` をVariablesではなくSecretsにする理由：** アカウントIDを公開したくないため。Variablesはリポジトリのコントリビューターなら見えてしまう。
 
+### Step 3.5: GitHub リポジトリの確認
+
+ワークフローを動かす前に、GitHub リポジトリ側の設定を確認する。
+
+**GitHub リポジトリが存在するか確認：**
+- `https://github.com/<ユーザー名>/aws-demo` にリポジトリが作成されていること
+- ローカルの `aws-demo` ディレクトリが `git remote` でこのリポジトリに紐づいていること
+
+**GitHub Actions が有効か確認：**
+1. リポジトリ → **「Settings」** → **「Actions」** → **「General」**
+2. **「Actions permissions」** が `Allow all actions and reusable workflows` になっているか確認
+3. 無効になっている場合は有効化する
+
+> **プライベートリポジトリの注意：** 無料プランの場合、プライベートリポジトリは GitHub Actions の月間実行時間に制限がある（2,000分/月）。学習用途では通常問題ない。
+
+**`permissions: id-token: write` が必須：**
+
+Step 4 で作成するワークフローファイルに `permissions: id-token: write` が含まれていることを必ず確認する。これがないと OIDC 認証が機能せず、以下のエラーになる：
+```
+Error: Credentials could not be loaded, please check your action inputs:
+Could not load credentials from any providers
+```
+
+このフラグはリポジトリに対して「このワークフローが OIDC トークン（AWS 認証用の一時的な証明書）を発行してよい」という許可を与えるもの。アクセスキー不要の安全な認証方式だが、この設定がないと動かない。
+
 ### Step 4: GitHub Actions ワークフローファイルの作成
 
 プロジェクトに `.github/workflows/deploy.yml` を作成：
+
+> **ファイルの配置場所：** `.github/workflows/` ディレクトリはプロジェクトルート直下に作成する。ディレクトリが存在しない場合は `mkdir -p .github/workflows` で作成する。
 
 ```yaml
 name: Deploy to AWS

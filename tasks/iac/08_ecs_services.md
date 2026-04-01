@@ -145,9 +145,19 @@ resource "aws_ecs_task_definition" "backend" {
 
     environment = [
       # コンテナに渡す環境変数（配列形式）
+      # jsonencode の中でも Terraform の参照式が使える（これが jsonencode の強み）
+      #
+      # 通常の JSON では値をハードコードするしかないが、jsonencode を使うと
+      # Terraform が apply 時に参照式を評価してから JSON 文字列を生成してくれる。
+      # 例: aws_db_instance.main.address → "mydb.abc123.ap-northeast-1.rds.amazonaws.com"
+      #
+      # 書き方のルール:
+      #   value = "固定の文字列"           ← 変わらない値はそのまま文字列で書く
+      #   value = 参照式                   ← Terraformリソースの属性は引用符なしで書く
+      #   value = "prefix-${参照式}"       ← 他の文字列と組み合わせる場合は補間構文を使う
       { name = "NODE_ENV",   value = "production" },
       { name = "DB_HOST",    value = aws_db_instance.main.address },
-      # ↑ Terraform式をJSON内で使える（jsonencodeの強み）
+      # ↑ 引用符なし。Terraformが apply 時に RDS のエンドポイントURLに解決する
       { name = "DB_PORT",    value = "5432" },
       { name = "DB_NAME",    value = "taskflow" },
       { name = "REDIS_HOST", value = aws_elasticache_cluster.main.cache_nodes[0].address },
@@ -242,7 +252,14 @@ resource "aws_ecs_service" "backend" {
   }
 
   depends_on = [aws_lb_listener.http]
-  # ↑ リスナーが存在してからサービスを作成する（ヘルスチェックの競合を避ける）
+  # ↑ なぜこれが必要か：
+  #   ECS サービスを作成すると、ALB のターゲットグループにタスクを登録しようとする。
+  #   しかしリスナー（ポート80でリクエストを受け付ける設定）が存在しないと、
+  #   ターゲットグループへのルーティングが未確定な状態になりヘルスチェックが競合する。
+  #
+  #   Terraform は参照式から依存関係を自動推測するが、ECSサービスはリスナーを直接参照
+  #   していないため自動推測できない。depends_on で「リスナーを作ってからサービスを作れ」
+  #   と明示的に伝えることで、この順序の問題を回避する。
 }
 ```
 

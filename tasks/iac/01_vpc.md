@@ -282,7 +282,16 @@ resource "aws_route_table" "public" {
   tags = { Name = "taskflow-public-rt" }
 }
 
-# サブネットとルートテーブルの紐づけは別リソース
+# サブネットとルートテーブルの紐づけは別リソース（aws_route_table_association）
+#
+# なぜ aws_route_table の中に書かずに別リソースなのか？
+#   → AWSのAPIの設計がそうなっているから。ルートテーブル自体と「どのサブネットに紐づけるか」は
+#     別の概念として分離されている。コンソールでも「ルートを編集」と「サブネットの関連付け」が
+#     別タブになっていた通り、Terraformも同じ構造で表現している。
+#
+# この設計の利点：
+#   - 1つのルートテーブルを複数のサブネットに紐づける場合、association だけ増やせばよい
+#   - ルートの変更と紐づけの変更が独立して管理できる
 resource "aws_route_table_association" "public_a" {
   subnet_id      = aws_subnet.public_a.id
   route_table_id = aws_route_table.public.id
