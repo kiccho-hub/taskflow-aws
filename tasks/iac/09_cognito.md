@@ -1,5 +1,59 @@
 # Task 9: Cognito 認証設定（IaC）
 
+## 全体構成における位置づけ
+
+> 図: TaskFlow全体アーキテクチャ（オレンジ色が今回構築するコンポーネント）
+
+```mermaid
+graph TD
+    Browser["🌐 Browser"]
+    R53["Route 53"]
+    CF["CloudFront (Task10)"]
+    S3["S3 (Task10)"]
+    ALB["ALB (Task07)"]
+    ECSFront["ECS Frontend (Task06/08)"]
+    ECSBack["ECS Backend (Task06/08)"]
+    ECR["ECR (Task05)"]
+    RDS["RDS PostgreSQL (Task03)"]
+    Redis["ElastiCache Redis (Task04)"]
+    Cognito["Cognito (Task09)"]
+    GH["GitHub Actions (Task11)"]
+    CW["CloudWatch (Task12)"]
+
+    subgraph VPC["VPC / Subnets (Task01) + SG (Task02)"]
+        subgraph PublicSubnet["Public Subnet"]
+            ALB
+        end
+        subgraph PrivateSubnet["Private Subnet"]
+            ECSFront
+            ECSBack
+            RDS
+            Redis
+        end
+    end
+
+    Browser --> R53 --> CF
+    CF --> S3
+    CF --> ALB
+    ALB -->|"/*"| ECSFront
+    ALB -->|"/api/*"| ECSBack
+    ECSBack --> RDS
+    ECSBack --> Redis
+    ECR -.->|Pull| ECSFront
+    ECR -.->|Pull| ECSBack
+    Cognito -.->|Auth| ECSBack
+    GH -.->|Deploy| ECR
+    CW -.->|Monitor| ALB
+    CW -.->|Monitor| ECSBack
+
+    classDef highlight fill:#ff9900,stroke:#cc6600,color:#000,font-weight:bold
+    class Cognito highlight
+```
+
+**今回構築する箇所:** Cognito User Pool + App Client + Groups - ユーザー認証基盤をTerraformで管理する（Guest/User/Adminの3ロール）
+
+---
+
 > 前提: [コンソール版 Task 9](../console/09_cognito.md) を完了済みであること
 > 参照ナレッジ: [09_authentication.md](../knowledge/09_authentication.md)
 
@@ -43,6 +97,29 @@ resource "aws_cognito_user_pool" "main" {
 Error: cannot change username attributes after creation
 ```
 のようなエラーが出て変更できない。本番環境では作成前に設定を慎重に確認すること。
+
+---
+
+## Terraformリソース依存グラフ
+
+> 図: Task09 で作成するTerraformリソースの依存関係
+
+```mermaid
+graph LR
+    UP["aws_cognito_user_pool<br/>.main"]
+    Client["aws_cognito_user_pool_client<br/>.web"]
+    GuestGrp["aws_cognito_user_group<br/>.guest"]
+    UserGrp["aws_cognito_user_group<br/>.user"]
+    AdminGrp["aws_cognito_user_group<br/>.admin"]
+
+    UP --> Client
+    UP --> GuestGrp
+    UP --> UserGrp
+    UP --> AdminGrp
+
+    classDef tf fill:#7b42bc,stroke:#5a2e8a,color:#fff
+    class UP,Client,GuestGrp,UserGrp,AdminGrp tf
+```
 
 ---
 

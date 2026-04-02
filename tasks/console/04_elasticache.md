@@ -1,5 +1,88 @@
 # Task 4: ElastiCache Redis 構築（コンソール）
 
+## 全体構成における位置づけ
+
+> 図: TaskFlow全体アーキテクチャ（オレンジ色が今回構築するコンポーネント）
+
+```mermaid
+graph TD
+    Browser["🌐 Browser"]
+    R53["Route 53"]
+    CF["CloudFront (Task10)"]
+    S3["S3 (Task10)"]
+    ALB["ALB (Task07)"]
+    ECSFront["ECS Frontend (Task06/08)"]
+    ECSBack["ECS Backend (Task06/08)"]
+    ECR["ECR (Task05)"]
+    RDS["RDS PostgreSQL (Task03)"]
+    Redis["ElastiCache Redis (Task04)"]
+    Cognito["Cognito (Task09)"]
+    GH["GitHub Actions (Task11)"]
+    CW["CloudWatch (Task12)"]
+
+    subgraph VPC["VPC / Subnets (Task01) + SG (Task02)"]
+        subgraph PublicSubnet["Public Subnet"]
+            ALB
+        end
+        subgraph PrivateSubnet["Private Subnet"]
+            ECSFront
+            ECSBack
+            RDS
+            Redis
+        end
+    end
+
+    Browser --> R53 --> CF
+    CF --> S3
+    CF --> ALB
+    ALB -->|"/*"| ECSFront
+    ALB -->|"/api/*"| ECSBack
+    ECSBack --> RDS
+    ECSBack --> Redis
+    ECR -.->|Pull| ECSFront
+    ECR -.->|Pull| ECSBack
+    Cognito -.->|Auth| ECSBack
+    GH -.->|Deploy| ECR
+    CW -.->|Monitor| ALB
+    CW -.->|Monitor| ECSBack
+
+    classDef highlight fill:#ff9900,stroke:#cc6600,color:#000,font-weight:bold
+    class Redis highlight
+```
+
+**今回構築する箇所:** ElastiCache Redis（Task04）- セッション管理・APIレスポンスのキャッシュ
+
+---
+
+> 図: ElastiCacheキャッシュ動作フロー（Hit/Miss別の処理経路）
+
+```mermaid
+flowchart LR
+    Client["👤 ユーザーリクエスト"]
+    ECSBack["ECS Backend\n(Node.js)"]
+    Redis["ElastiCache Redis\ntaskflow-redis\n(cache.t3.micro)"]
+    RDS["RDS PostgreSQL\ntaskflow-db"]
+
+    Client -->|"APIリクエスト"| ECSBack
+    ECSBack -->|"① キャッシュ確認\n(GET session:xxx)"| Redis
+
+    Redis -->|"② キャッシュ HIT\nデータ返却"| ECSBack
+    Redis -->|"③ キャッシュ MISS\n(nil を返す)"| ECSBack
+
+    ECSBack -->|"④ MISSの場合\nDBクエリ"| RDS
+    RDS -->|"⑤ データ返却"| ECSBack
+    ECSBack -->|"⑥ キャッシュに保存\n(SET session:xxx TTL=3600)"| Redis
+
+    ECSBack -->|"レスポンス"| Client
+
+    classDef highlight fill:#ff9900,stroke:#cc6600,color:#000,font-weight:bold
+    classDef db fill:#e8f5e9,stroke:#4caf50,color:#000
+    class Redis highlight
+    class RDS db
+```
+
+---
+
 > 参照ナレッジ: [04_cache.md](../knowledge/04_cache.md)
 
 ## このタスクのゴール

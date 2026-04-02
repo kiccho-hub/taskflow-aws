@@ -1,5 +1,102 @@
 # Task 1: VPC・サブネット・ゲートウェイ構築（IaC）
 
+## 全体構成における位置づけ
+
+> 図: TaskFlow全体アーキテクチャ（オレンジ色が今回構築するコンポーネント）
+
+```mermaid
+graph TD
+    Browser["🌐 Browser"]
+    R53["Route 53"]
+    CF["CloudFront (Task10)"]
+    S3["S3 (Task10)"]
+    ALB["ALB (Task07)"]
+    ECSFront["ECS Frontend (Task06/08)"]
+    ECSBack["ECS Backend (Task06/08)"]
+    ECR["ECR (Task05)"]
+    RDS["RDS PostgreSQL (Task03)"]
+    Redis["ElastiCache Redis (Task04)"]
+    Cognito["Cognito (Task09)"]
+    GH["GitHub Actions (Task11)"]
+    CW["CloudWatch (Task12)"]
+
+    subgraph VPC["VPC / Subnets (Task01) + SG (Task02)"]
+        subgraph PublicSubnet["Public Subnet"]
+            ALB
+        end
+        subgraph PrivateSubnet["Private Subnet"]
+            ECSFront
+            ECSBack
+            RDS
+            Redis
+        end
+    end
+
+    Browser --> R53 --> CF
+    CF --> S3
+    CF --> ALB
+    ALB -->|"/*"| ECSFront
+    ALB -->|"/api/*"| ECSBack
+    ECSBack --> RDS
+    ECSBack --> Redis
+    ECR -.->|Pull| ECSFront
+    ECR -.->|Pull| ECSBack
+    Cognito -.->|Auth| ECSBack
+    GH -.->|Deploy| ECR
+    CW -.->|Monitor| ALB
+    CW -.->|Monitor| ECSBack
+
+    classDef highlight fill:#ff9900,stroke:#cc6600,color:#000,font-weight:bold
+    class VPC highlight
+```
+
+**今回構築する箇所:** VPC・サブネット・IGW・NAT Gateway・ルートテーブル（Task01）。すべてのAWSリソースが配置されるネットワーク基盤。
+
+---
+
+> 図: Terraformリソース依存グラフ（Task01）
+
+```mermaid
+graph TD
+    VPC["aws_vpc.main"]
+    SubPubA["aws_subnet.public_a"]
+    SubPubC["aws_subnet.public_c"]
+    SubPrivA["aws_subnet.private_a"]
+    SubPrivC["aws_subnet.private_c"]
+    IGW["aws_internet_gateway.main"]
+    EIP["aws_eip.nat"]
+    NAT["aws_nat_gateway.main"]
+    RT_Pub["aws_route_table.public"]
+    RT_Priv["aws_route_table.private"]
+    RTA_PubA["aws_route_table_association.public_a"]
+    RTA_PubC["aws_route_table_association.public_c"]
+    RTA_PrivA["aws_route_table_association.private_a"]
+    RTA_PrivC["aws_route_table_association.private_c"]
+
+    VPC --> SubPubA
+    VPC --> SubPubC
+    VPC --> SubPrivA
+    VPC --> SubPrivC
+    VPC --> IGW
+    EIP --> NAT
+    SubPubA --> NAT
+    IGW -.->|depends_on| NAT
+    VPC --> RT_Pub
+    IGW --> RT_Pub
+    VPC --> RT_Priv
+    NAT --> RT_Priv
+    SubPubA --> RTA_PubA
+    RT_Pub --> RTA_PubA
+    SubPubC --> RTA_PubC
+    RT_Pub --> RTA_PubC
+    SubPrivA --> RTA_PrivA
+    RT_Priv --> RTA_PrivA
+    SubPrivC --> RTA_PrivC
+    RT_Priv --> RTA_PrivC
+```
+
+---
+
 > 前提: [コンソール版 Task 1](../console/01_vpc.md) を完了済みであること
 > 参照ナレッジ: [01_networking.md](../knowledge/01_networking.md)
 

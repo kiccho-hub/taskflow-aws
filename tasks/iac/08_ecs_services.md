@@ -1,5 +1,59 @@
 # Task 8: ECS サービス・タスク定義（IaC）
 
+## 全体構成における位置づけ
+
+> 図: TaskFlow全体アーキテクチャ（オレンジ色が今回構築するコンポーネント）
+
+```mermaid
+graph TD
+    Browser["🌐 Browser"]
+    R53["Route 53"]
+    CF["CloudFront (Task10)"]
+    S3["S3 (Task10)"]
+    ALB["ALB (Task07)"]
+    ECSFront["ECS Frontend (Task06/08)"]
+    ECSBack["ECS Backend (Task06/08)"]
+    ECR["ECR (Task05)"]
+    RDS["RDS PostgreSQL (Task03)"]
+    Redis["ElastiCache Redis (Task04)"]
+    Cognito["Cognito (Task09)"]
+    GH["GitHub Actions (Task11)"]
+    CW["CloudWatch (Task12)"]
+
+    subgraph VPC["VPC / Subnets (Task01) + SG (Task02)"]
+        subgraph PublicSubnet["Public Subnet"]
+            ALB
+        end
+        subgraph PrivateSubnet["Private Subnet"]
+            ECSFront
+            ECSBack
+            RDS
+            Redis
+        end
+    end
+
+    Browser --> R53 --> CF
+    CF --> S3
+    CF --> ALB
+    ALB -->|"/*"| ECSFront
+    ALB -->|"/api/*"| ECSBack
+    ECSBack --> RDS
+    ECSBack --> Redis
+    ECR -.->|Pull| ECSFront
+    ECR -.->|Pull| ECSBack
+    Cognito -.->|Auth| ECSBack
+    GH -.->|Deploy| ECR
+    CW -.->|Monitor| ALB
+    CW -.->|Monitor| ECSBack
+
+    classDef highlight fill:#ff9900,stroke:#cc6600,color:#000,font-weight:bold
+    class ECSFront,ECSBack highlight
+```
+
+**今回構築する箇所:** ECS Services + Task Definitions + IAM Roles - ALBのターゲットグループに登録されるコンテナサービスとIAMロールをTerraformで管理する
+
+---
+
 > 前提: [コンソール版 Task 8](../console/08_ecs_services.md) を完了済みであること
 > 参照ナレッジ: [06_ecs_fargate.md](../knowledge/06_ecs_fargate.md)、[08_iam.md](../knowledge/08_iam.md)
 
@@ -53,6 +107,43 @@ resource "aws_ecs_service" "backend" {
   # ↑ タスク定義のARNが変わらなくても、apply時に強制的に新しいタスクをデプロイする
   # ↑ 例: 同じタスク定義リビジョンでも「latest」イメージが更新された場合に有効
 }
+```
+
+---
+
+## Terraformリソース依存グラフ
+
+> 図: Task08 で作成するTerraformリソースの依存関係
+
+```mermaid
+graph LR
+    IAMExec["aws_iam_role<br/>.ecs_execution"]
+    IAMTask["aws_iam_role<br/>.ecs_task"]
+    IAMAttach["aws_iam_role_policy_attachment<br/>.ecs_execution"]
+    LogBE["aws_cloudwatch_log_group<br/>.backend"]
+    LogFE["aws_cloudwatch_log_group<br/>.frontend"]
+    TaskDefBE["aws_ecs_task_definition<br/>.backend"]
+    TaskDefFE["aws_ecs_task_definition<br/>.frontend"]
+    SvcBE["aws_ecs_service<br/>.backend"]
+    SvcFE["aws_ecs_service<br/>.frontend"]
+    TG_BE["aws_lb_target_group<br/>.backend (Task07)"]
+    TG_FE["aws_lb_target_group<br/>.frontend (Task07)"]
+
+    IAMExec --> IAMAttach
+    IAMExec --> TaskDefBE
+    IAMExec --> TaskDefFE
+    IAMTask --> TaskDefBE
+    LogBE --> TaskDefBE
+    LogFE --> TaskDefFE
+    TaskDefBE --> SvcBE
+    TaskDefFE --> SvcFE
+    TG_BE --> SvcBE
+    TG_FE --> SvcFE
+
+    classDef tf fill:#7b42bc,stroke:#5a2e8a,color:#fff
+    classDef ext fill:#666,stroke:#444,color:#fff
+    class IAMExec,IAMTask,IAMAttach,LogBE,LogFE,TaskDefBE,TaskDefFE,SvcBE,SvcFE tf
+    class TG_BE,TG_FE ext
 ```
 
 ---

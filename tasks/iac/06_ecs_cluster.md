@@ -1,5 +1,73 @@
 # Task 6: ECS クラスター構築（IaC）
 
+## 全体構成における位置づけ
+
+> 図: TaskFlow全体アーキテクチャ（オレンジ色が今回構築するコンポーネント）
+
+```mermaid
+graph TD
+    Browser["🌐 Browser"]
+    R53["Route 53"]
+    CF["CloudFront (Task10)"]
+    S3["S3 (Task10)"]
+    ALB["ALB (Task07)"]
+    ECSFront["ECS Frontend (Task06/08)"]
+    ECSBack["ECS Backend (Task06/08)"]
+    ECR["ECR (Task05)"]
+    RDS["RDS PostgreSQL (Task03)"]
+    Redis["ElastiCache Redis (Task04)"]
+    Cognito["Cognito (Task09)"]
+    GH["GitHub Actions (Task11)"]
+    CW["CloudWatch (Task12)"]
+
+    subgraph VPC["VPC / Subnets (Task01) + SG (Task02)"]
+        subgraph PublicSubnet["Public Subnet"]
+            ALB
+        end
+        subgraph PrivateSubnet["Private Subnet"]
+            ECSFront
+            ECSBack
+            RDS
+            Redis
+        end
+    end
+
+    Browser --> R53 --> CF
+    CF --> S3
+    CF --> ALB
+    ALB -->|"/*"| ECSFront
+    ALB -->|"/api/*"| ECSBack
+    ECSBack --> RDS
+    ECSBack --> Redis
+    ECR -.->|Pull| ECSFront
+    ECR -.->|Pull| ECSBack
+    Cognito -.->|Auth| ECSBack
+    GH -.->|Deploy| ECR
+    CW -.->|Monitor| ALB
+    CW -.->|Monitor| ECSBack
+
+    classDef highlight fill:#ff9900,stroke:#cc6600,color:#000,font-weight:bold
+    class ECSFront,ECSBack highlight
+```
+
+**今回構築する箇所:** ECSクラスター（Task06）。コンテナを動かすための土台となるクラスターとキャパシティプロバイダー設定。
+
+---
+
+> 図: Terraformリソース依存グラフ（Task06）
+
+```mermaid
+graph TD
+    Cluster["aws_ecs_cluster.main\n（taskflow-cluster）\ncontainerInsights: enabled"]
+    CapProviders["aws_ecs_cluster_capacity_providers.main\nFARGATE / FARGATE_SPOT"]
+    CW["CloudWatch Logs\n（Container Insightsが\nメトリクスを送信）"]
+
+    Cluster -->|"cluster_name参照"| CapProviders
+    Cluster -.->|"containerInsights\nによる連携"| CW
+```
+
+---
+
 > 前提: [コンソール版 Task 6](../console/06_ecs_cluster.md) を完了済みであること
 > 参照ナレッジ: [06_ecs_fargate.md](../knowledge/06_ecs_fargate.md)
 

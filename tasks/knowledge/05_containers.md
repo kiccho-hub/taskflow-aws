@@ -121,3 +121,59 @@ docker push \
 ```
 
 CI/CDではこの手順をワークフローに組み込んで自動化する（Task 11）。
+
+> 図: DockerイメージのビルドからECRプッシュ、ECSデプロイまでの全フロー
+
+```mermaid
+flowchart TD
+    subgraph Local["ローカル開発環境 / GitHub Actions"]
+        Dockerfile["Dockerfile\n（ビルド手順書）"]
+        Build["docker build\n↓\nイメージ作成"]
+        Tag["docker tag\nECR URI でタグ付け"]
+        Login["aws ecr get-login-password\n↓\ndocker login"]
+        Push["docker push\nECRへアップロード"]
+    end
+
+    subgraph ECR["Amazon ECR\n（プライベートレジストリ）"]
+        Repo["taskflow-backend\nリポジトリ\n:v1.0 :v1.1 :latest"]
+        Scan["脆弱性スキャン\n（scan_on_push）"]
+    end
+
+    subgraph ECS["Amazon ECS Fargate"]
+        TaskDef["タスク定義\nimage: ECR URI:タグ"]
+        Container["コンテナ起動\n（イメージをpull）"]
+    end
+
+    Dockerfile --> Build --> Tag
+    Login --> Push
+    Tag --> Push
+    Push --> Repo
+    Repo --> Scan
+    Repo -->|"IAM認証でpull"| TaskDef
+    TaskDef --> Container
+
+    style Local fill:#e8f5e9,stroke:#2e7d32
+    style ECR fill:#e3f2fd,stroke:#1565c0
+    style ECS fill:#fff3e0,stroke:#ef6c00
+```
+
+> 図: Dockerイメージのレイヤー構造（変更部分だけ転送される仕組み）
+
+```mermaid
+flowchart TD
+    subgraph Image["Dockerイメージ（レイヤー構造）"]
+        L1["Layer 1: ベースOS\nnode:20-alpine\n（共有・キャッシュ済み）"]
+        L2["Layer 2: 依存パッケージ\nnpm install\n（package.jsonが変わらなければキャッシュ）"]
+        L3["Layer 3: アプリコード\nCOPY . .\n（コード変更のたびに更新）"]
+        L4["Layer 4: 起動コマンド\nCMD node server.js"]
+    end
+
+    L1 --> L2 --> L3 --> L4
+
+    Note["💡 上位レイヤーを変えると\nそれ以下のキャッシュは無効化される\n→ COPY前にnpm installを書く理由"]
+
+    style L1 fill:#e8f5e9,stroke:#2e7d32
+    style L2 fill:#e3f2fd,stroke:#1565c0
+    style L3 fill:#fff3e0,stroke:#ef6c00
+    style L4 fill:#fce4ec,stroke:#c62828
+```

@@ -1,5 +1,59 @@
 # Task 7: ALB 構築・パスベースルーティング（IaC）
 
+## 全体構成における位置づけ
+
+> 図: TaskFlow全体アーキテクチャ（オレンジ色が今回構築するコンポーネント）
+
+```mermaid
+graph TD
+    Browser["🌐 Browser"]
+    R53["Route 53"]
+    CF["CloudFront (Task10)"]
+    S3["S3 (Task10)"]
+    ALB["ALB (Task07)"]
+    ECSFront["ECS Frontend (Task06/08)"]
+    ECSBack["ECS Backend (Task06/08)"]
+    ECR["ECR (Task05)"]
+    RDS["RDS PostgreSQL (Task03)"]
+    Redis["ElastiCache Redis (Task04)"]
+    Cognito["Cognito (Task09)"]
+    GH["GitHub Actions (Task11)"]
+    CW["CloudWatch (Task12)"]
+
+    subgraph VPC["VPC / Subnets (Task01) + SG (Task02)"]
+        subgraph PublicSubnet["Public Subnet"]
+            ALB
+        end
+        subgraph PrivateSubnet["Private Subnet"]
+            ECSFront
+            ECSBack
+            RDS
+            Redis
+        end
+    end
+
+    Browser --> R53 --> CF
+    CF --> S3
+    CF --> ALB
+    ALB -->|"/*"| ECSFront
+    ALB -->|"/api/*"| ECSBack
+    ECSBack --> RDS
+    ECSBack --> Redis
+    ECR -.->|Pull| ECSFront
+    ECR -.->|Pull| ECSBack
+    Cognito -.->|Auth| ECSBack
+    GH -.->|Deploy| ECR
+    CW -.->|Monitor| ALB
+    CW -.->|Monitor| ECSBack
+
+    classDef highlight fill:#ff9900,stroke:#cc6600,color:#000,font-weight:bold
+    class ALB highlight
+```
+
+**今回構築する箇所:** ALB（Application Load Balancer）- パスベースルーティングでフロントエンド（`/*`）とバックエンド（`/api/*`）にリクエストを振り分ける
+
+---
+
 > 前提: [コンソール版 Task 7](../console/07_alb.md) を完了済みであること
 > 参照ナレッジ: [07_load_balancer.md](../knowledge/07_load_balancer.md)
 
@@ -48,6 +102,29 @@ health_check {
   timeout             = 5              # 5秒で応答がなければ失敗
   matcher             = "200"          # HTTPステータス200がOK
 }
+```
+
+---
+
+## Terraformリソース依存グラフ
+
+> 図: Task07 で作成するTerraformリソースの依存関係
+
+```mermaid
+graph LR
+    TG_BE["aws_lb_target_group<br/>.backend"]
+    TG_FE["aws_lb_target_group<br/>.frontend"]
+    LB["aws_lb<br/>.main"]
+    Listener["aws_lb_listener<br/>.http"]
+    Rule["aws_lb_listener_rule<br/>.api"]
+
+    LB --> Listener
+    TG_FE --> Listener
+    Listener --> Rule
+    TG_BE --> Rule
+
+    classDef tf fill:#7b42bc,stroke:#5a2e8a,color:#fff
+    class TG_BE,TG_FE,LB,Listener,Rule tf
 ```
 
 ---

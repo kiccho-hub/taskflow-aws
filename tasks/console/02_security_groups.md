@@ -1,5 +1,79 @@
 # Task 2: セキュリティグループ設定（コンソール）
 
+## 全体構成における位置づけ
+
+> 図: TaskFlow全体アーキテクチャ（オレンジ色が今回構築するコンポーネント）
+
+```mermaid
+graph TD
+    Browser["🌐 Browser"]
+    R53["Route 53"]
+    CF["CloudFront (Task10)"]
+    S3["S3 (Task10)"]
+    ALB["ALB (Task07)"]
+    ECSFront["ECS Frontend (Task06/08)"]
+    ECSBack["ECS Backend (Task06/08)"]
+    ECR["ECR (Task05)"]
+    RDS["RDS PostgreSQL (Task03)"]
+    Redis["ElastiCache Redis (Task04)"]
+    Cognito["Cognito (Task09)"]
+    GH["GitHub Actions (Task11)"]
+    CW["CloudWatch (Task12)"]
+
+    subgraph VPC["VPC / Subnets (Task01) + SG (Task02)"]
+        subgraph PublicSubnet["Public Subnet"]
+            ALB
+        end
+        subgraph PrivateSubnet["Private Subnet"]
+            ECSFront
+            ECSBack
+            RDS
+            Redis
+        end
+    end
+
+    Browser --> R53 --> CF
+    CF --> S3
+    CF --> ALB
+    ALB -->|"/*"| ECSFront
+    ALB -->|"/api/*"| ECSBack
+    ECSBack --> RDS
+    ECSBack --> Redis
+    ECR -.->|Pull| ECSFront
+    ECR -.->|Pull| ECSBack
+    Cognito -.->|Auth| ECSBack
+    GH -.->|Deploy| ECR
+    CW -.->|Monitor| ALB
+    CW -.->|Monitor| ECSBack
+
+    classDef highlight fill:#ff9900,stroke:#cc6600,color:#000,font-weight:bold
+```
+
+**今回構築する箇所:** セキュリティグループ（Task02）- VPC内リソースの仮想ファイアウォール4つ
+
+---
+
+> 図: セキュリティグループ・チェーン図（通信の許可フロー）
+
+```mermaid
+graph LR
+    Internet(["🌐 Internet"])
+    ALBSG["taskflow-sg-alb\n---\nIN: 80, 443\nfrom 0.0.0.0/0"]
+    ECSSG["taskflow-sg-ecs\n---\nIN: 80, 3000\nfrom sg-alb のみ"]
+    RDSSG["taskflow-sg-rds\n---\nIN: 5432\nfrom sg-ecs のみ"]
+    Redissg["taskflow-sg-redis\n---\nIN: 6379\nfrom sg-ecs のみ"]
+
+    Internet -->|"HTTP:80\nHTTPS:443"| ALBSG
+    ALBSG -->|"HTTP:80\nTCP:3000"| ECSSG
+    ECSSG -->|"PostgreSQL:5432"| RDSSG
+    ECSSG -->|"Redis:6379"| RedisSG["taskflow-sg-redis\n---\nIN: 6379\nfrom sg-ecs のみ"]
+
+    classDef sgBox fill:#fff3e0,stroke:#ff9900,color:#000
+    class ALBSG,ECSSG,RDSSG,RedisSG sgBox
+```
+
+---
+
 > 参照ナレッジ: [02_security_groups.md](../knowledge/02_security_groups.md)
 
 ## このタスクのゴール

@@ -1,5 +1,59 @@
 # Task 11: GitHub Actions CI/CD（コンソール準備編）
 
+## 全体構成における位置づけ
+
+> 図: TaskFlow全体アーキテクチャ（オレンジ色が今回構築するコンポーネント）
+
+```mermaid
+graph TD
+    Browser["🌐 Browser"]
+    R53["Route 53"]
+    CF["CloudFront (Task10)"]
+    S3["S3 (Task10)"]
+    ALB["ALB (Task07)"]
+    ECSFront["ECS Frontend (Task06/08)"]
+    ECSBack["ECS Backend (Task06/08)"]
+    ECR["ECR (Task05)"]
+    RDS["RDS PostgreSQL (Task03)"]
+    Redis["ElastiCache Redis (Task04)"]
+    Cognito["Cognito (Task09)"]
+    GH["GitHub Actions (Task11)"]
+    CW["CloudWatch (Task12)"]
+
+    subgraph VPC["VPC / Subnets (Task01) + SG (Task02)"]
+        subgraph PublicSubnet["Public Subnet"]
+            ALB
+        end
+        subgraph PrivateSubnet["Private Subnet"]
+            ECSFront
+            ECSBack
+            RDS
+            Redis
+        end
+    end
+
+    Browser --> R53 --> CF
+    CF --> S3
+    CF --> ALB
+    ALB -->|"/*"| ECSFront
+    ALB -->|"/api/*"| ECSBack
+    ECSBack --> RDS
+    ECSBack --> Redis
+    ECR -.->|Pull| ECSFront
+    ECR -.->|Pull| ECSBack
+    Cognito -.->|Auth| ECSBack
+    GH -.->|Deploy| ECR
+    CW -.->|Monitor| ALB
+    CW -.->|Monitor| ECSBack
+
+    classDef highlight fill:#ff9900,stroke:#cc6600,color:#000,font-weight:bold
+    class GH highlight
+```
+
+**今回構築する箇所:** GitHub Actions CI/CD Pipeline - Task11。OIDCによる安全なAWS認証を設定し、mainブランチへのpushで自動デプロイを実現する。
+
+---
+
 > 参照ナレッジ: [11_cicd.md](../knowledge/11_cicd.md)
 
 ## このタスクのゴール
@@ -94,6 +148,55 @@ Could not load credentials from any providers
 このフラグはリポジトリに対して「このワークフローが OIDC トークン（AWS 認証用の一時的な証明書）を発行してよい」という許可を与えるもの。アクセスキー不要の安全な認証方式だが、この設定がないと動かない。
 
 ### Step 4: GitHub Actions ワークフローファイルの作成
+
+> 図: CI/CDパイプラインのフロー（push → test → build → ECR push → ECS deploy）
+
+```mermaid
+graph TD
+    Dev["開発者\ngit push origin main"]
+
+    subgraph GitHub["GitHub"]
+        Repo["リポジトリ\nmain ブランチ"]
+        subgraph Actions["GitHub Actions"]
+            Trigger["トリガー\non: push branches: main"]
+            
+            subgraph BackendJob["Job: deploy-backend"]
+                B1["Checkout"]
+                B2["OIDC認証\n一時STS認証情報を取得"]
+                B3["ECR Login"]
+                B4["Docker Build\nイメージタグ: git SHA"]
+                B5["ECR Push"]
+                B6["ECS Update Service\nforce-new-deployment"]
+            end
+            
+            subgraph FrontendJob["Job: deploy-frontend"]
+                F1["Checkout"]
+                F2["OIDC認証"]
+                F3["npm ci && npm run build"]
+                F4["S3 sync\n--delete"]
+                F5["CloudFront\nキャッシュ無効化"]
+            end
+        end
+    end
+
+    subgraph AWS["AWS"]
+        OIDC["IAM OIDC Provider\ntoken.actions.githubusercontent.com"]
+        Role["IAM Role\ngithub-actions-taskflow"]
+        ECR["ECR"]
+        ECS["ECS Service"]
+        S3["S3 Bucket"]
+        CF["CloudFront"]
+    end
+
+    Dev --> Repo --> Trigger
+    Trigger --> BackendJob
+    Trigger --> FrontendJob
+    B2 <-->|"JWT交換"| OIDC --> Role
+    B5 --> ECR
+    B6 --> ECS
+    F4 --> S3
+    F5 --> CF
+```
 
 プロジェクトに `.github/workflows/deploy.yml` を作成：
 

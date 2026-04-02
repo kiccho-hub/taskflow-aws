@@ -1,5 +1,59 @@
 # Task 7: ALB 構築・パスベースルーティング（コンソール）
 
+## 全体構成における位置づけ
+
+> 図: TaskFlow全体アーキテクチャ（オレンジ色が今回構築するコンポーネント）
+
+```mermaid
+graph TD
+    Browser["🌐 Browser"]
+    R53["Route 53"]
+    CF["CloudFront (Task10)"]
+    S3["S3 (Task10)"]
+    ALB["ALB (Task07)"]
+    ECSFront["ECS Frontend (Task06/08)"]
+    ECSBack["ECS Backend (Task06/08)"]
+    ECR["ECR (Task05)"]
+    RDS["RDS PostgreSQL (Task03)"]
+    Redis["ElastiCache Redis (Task04)"]
+    Cognito["Cognito (Task09)"]
+    GH["GitHub Actions (Task11)"]
+    CW["CloudWatch (Task12)"]
+
+    subgraph VPC["VPC / Subnets (Task01) + SG (Task02)"]
+        subgraph PublicSubnet["Public Subnet"]
+            ALB
+        end
+        subgraph PrivateSubnet["Private Subnet"]
+            ECSFront
+            ECSBack
+            RDS
+            Redis
+        end
+    end
+
+    Browser --> R53 --> CF
+    CF --> S3
+    CF --> ALB
+    ALB -->|"/*"| ECSFront
+    ALB -->|"/api/*"| ECSBack
+    ECSBack --> RDS
+    ECSBack --> Redis
+    ECR -.->|Pull| ECSFront
+    ECR -.->|Pull| ECSBack
+    Cognito -.->|Auth| ECSBack
+    GH -.->|Deploy| ECR
+    CW -.->|Monitor| ALB
+    CW -.->|Monitor| ECSBack
+
+    classDef highlight fill:#ff9900,stroke:#cc6600,color:#000,font-weight:bold
+    class ALB highlight
+```
+
+**今回構築する箇所:** ALB（Application Load Balancer）- Task07。パブリックサブネットに配置し、`/api/*` をECS Backendへ、それ以外をECS Frontendへルーティングする。
+
+---
+
 > 参照ナレッジ: [07_load_balancer.md](../knowledge/07_load_balancer.md)
 
 ## このタスクのゴール
@@ -86,6 +140,33 @@
 2. **「ロードバランサーの作成」**
 
 ### Step 4: パスベースルーティングの設定
+
+> 図: ALBのリスナー・ルール・ターゲットグループ構成（パスベースルーティング）
+
+```mermaid
+graph LR
+    Client["🌐 クライアント"]
+    ALB["ALB\ntaskflow-alb\n:80"]
+    
+    subgraph Listeners["リスナー (HTTP:80)"]
+        Rule1["ルール 優先度1\nパス: /api/*"]
+        RuleDefault["デフォルトルール\nその他すべて"]
+    end
+    
+    TGBack["ターゲットグループ\ntaskflow-tg-backend\nポート:3000\nヘルスチェック: /api/health"]
+    TGFront["ターゲットグループ\ntaskflow-tg-frontend\nポート:80\nヘルスチェック: /"]
+    
+    ECSBack["ECS Backend\n(Fargate)"]
+    ECSFront["ECS Frontend\n(Fargate)"]
+
+    Client --> ALB
+    ALB --> Rule1
+    ALB --> RuleDefault
+    Rule1 -->|"転送"| TGBack
+    RuleDefault -->|"転送 (デフォルト)"| TGFront
+    TGBack --> ECSBack
+    TGFront --> ECSFront
+```
 
 ALBが作成されたら、`/api/*` をバックエンドに向けるルールを追加する。
 

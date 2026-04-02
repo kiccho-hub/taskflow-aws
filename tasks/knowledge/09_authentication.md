@@ -64,6 +64,28 @@ SPAからの認証の場合、クライアントシークレットを生成**し
 **ユーザーグループ：**
 ユーザーをグループに所属させ、そのグループ情報をトークンに含める。アプリ側の認可ロジックに使う。
 
+> 図: TaskFlowのGuest/User/Admin 3ロール権限構造
+
+```mermaid
+graph TD
+    subgraph Cognitoユーザーグループ
+        G["👀 Guest グループ"]
+        U["👤 User グループ"]
+        A["👑 Admin グループ"]
+    end
+
+    G -->|読み取り専用| R1["タスク一覧の閲覧\n（自分のタスクのみ）"]
+    U -->|CRUD| R2["タスクの作成・編集・削除\n（自分のタスクのみ）"]
+    A -->|フルアクセス| R3["全ユーザーのタスク管理\nユーザー管理\nシステム設定"]
+
+    subgraph JWTペイロード
+        JWT["cognito:groups: User\nemail: user@example.com\nexp: 1234567890"]
+    end
+
+    U --> JWT
+    JWT -->|バックエンドで検証し認可| R2
+```
+
 ---
 
 ## Cognitoの認証フロー（SPA）
@@ -75,6 +97,32 @@ SPAからの認証の場合、クライアントシークレットを生成**し
 4. React はリクエストごとに Authorization: Bearer <IDトークン> をヘッダーに付ける
 5. バックエンドが Cognito の公開鍵でトークンを検証
 6. グループ情報から権限チェック
+```
+
+> 図: Cognitoを使ったJWT認証フロー（ログインからAPIアクセスまで）
+
+```mermaid
+sequenceDiagram
+    actor ユーザー
+    participant React as Reactアプリ
+    participant Cognito as Amazon Cognito\nユーザープール
+    participant Backend as Node.js\nバックエンド
+    participant DB as RDS PostgreSQL
+
+    ユーザー ->> React: メール/パスワード入力
+    React ->> Cognito: 認証リクエスト\n(POST /oauth2/token)
+    Cognito -->> React: IDトークン・アクセストークン\n・リフレッシュトークン
+
+    Note over React: トークンをlocalStorageに保存
+
+    ユーザー ->> React: タスク一覧を表示
+    React ->> Backend: GET /api/tasks\nAuthorization: Bearer <IDトークン>
+    Backend ->> Cognito: 公開鍵（JWKS）で署名検証
+    Cognito -->> Backend: 検証OK（グループ情報含むペイロード）
+    Backend ->> DB: SELECT * FROM tasks
+    DB -->> Backend: タスクデータ
+    Backend -->> React: JSONレスポンス
+    React -->> ユーザー: タスク一覧を表示
 ```
 
 ---

@@ -1,5 +1,98 @@
 # Task 1: VPC・サブネット・ゲートウェイ構築（コンソール）
 
+## 全体構成における位置づけ
+
+> 図: TaskFlow全体アーキテクチャ（オレンジ色が今回構築するコンポーネント）
+
+```mermaid
+graph TD
+    Browser["🌐 Browser"]
+    R53["Route 53"]
+    CF["CloudFront (Task10)"]
+    S3["S3 (Task10)"]
+    ALB["ALB (Task07)"]
+    ECSFront["ECS Frontend (Task06/08)"]
+    ECSBack["ECS Backend (Task06/08)"]
+    ECR["ECR (Task05)"]
+    RDS["RDS PostgreSQL (Task03)"]
+    Redis["ElastiCache Redis (Task04)"]
+    Cognito["Cognito (Task09)"]
+    GH["GitHub Actions (Task11)"]
+    CW["CloudWatch (Task12)"]
+
+    subgraph VPC["VPC / Subnets (Task01) + SG (Task02)"]
+        subgraph PublicSubnet["Public Subnet"]
+            ALB
+        end
+        subgraph PrivateSubnet["Private Subnet"]
+            ECSFront
+            ECSBack
+            RDS
+            Redis
+        end
+    end
+
+    Browser --> R53 --> CF
+    CF --> S3
+    CF --> ALB
+    ALB -->|"/*"| ECSFront
+    ALB -->|"/api/*"| ECSBack
+    ECSBack --> RDS
+    ECSBack --> Redis
+    ECR -.->|Pull| ECSFront
+    ECR -.->|Pull| ECSBack
+    Cognito -.->|Auth| ECSBack
+    GH -.->|Deploy| ECR
+    CW -.->|Monitor| ALB
+    CW -.->|Monitor| ECSBack
+
+    classDef highlight fill:#ff9900,stroke:#cc6600,color:#000,font-weight:bold
+    class Browser highlight
+```
+
+**今回構築する箇所:** VPC・サブネット・IGW・NAT Gateway（Task01）- 全リソースを収容するネットワーク基盤
+
+---
+
+> 図: VPCサブネット配置図（AZごとのパブリック/プライベート構成）
+
+```mermaid
+graph TB
+    subgraph VPC["taskflow-vpc (10.0.0.0/16)"]
+        subgraph AZ_A["ap-northeast-1a"]
+            PubA["taskflow-public-a\n10.0.1.0/24\n(ALB, NAT Gateway)"]
+            PrivA["taskflow-private-a\n10.0.10.0/24\n(ECS, RDS Primary)"]
+        end
+        subgraph AZ_C["ap-northeast-1c"]
+            PubC["taskflow-public-c\n10.0.2.0/24\n(ALB 冗長化)"]
+            PrivC["taskflow-private-c\n10.0.11.0/24\n(ECS, RDS Standby)"]
+        end
+        IGW["Internet Gateway\n(taskflow-igw)"]
+        NAT["NAT Gateway\n(taskflow-nat)\n+ Elastic IP"]
+        PubRT["Public Route Table\n0.0.0.0/0 → IGW"]
+        PrivRT["Private Route Table\n0.0.0.0/0 → NAT"]
+    end
+    Internet(["🌐 Internet"])
+
+    Internet <-->|"インバウンド/アウトバウンド"| IGW
+    IGW --- PubRT
+    PubRT --- PubA
+    PubRT --- PubC
+    PubA --- NAT
+    NAT --- PrivRT
+    PrivRT --- PrivA
+    PrivRT --- PrivC
+
+    classDef public fill:#e8f4fd,stroke:#2196f3,color:#000
+    classDef private fill:#f3e8fd,stroke:#9c27b0,color:#000
+    classDef gateway fill:#ff9900,stroke:#cc6600,color:#000,font-weight:bold
+    class PubA,PubC public
+    class PrivA,PrivC private
+    class IGW,NAT gateway
+```
+
+---
+
 > 参照ナレッジ: [01_networking.md](../knowledge/01_networking.md)
 
 ## このタスクのゴール

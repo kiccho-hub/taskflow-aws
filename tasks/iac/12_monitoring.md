@@ -1,5 +1,59 @@
 # Task 12: CloudWatch 監視設定（IaC）
 
+## 全体構成における位置づけ
+
+> 図: TaskFlow全体アーキテクチャ（オレンジ色が今回構築するコンポーネント）
+
+```mermaid
+graph TD
+    Browser["🌐 Browser"]
+    R53["Route 53"]
+    CF["CloudFront (Task10)"]
+    S3["S3 (Task10)"]
+    ALB["ALB (Task07)"]
+    ECSFront["ECS Frontend (Task06/08)"]
+    ECSBack["ECS Backend (Task06/08)"]
+    ECR["ECR (Task05)"]
+    RDS["RDS PostgreSQL (Task03)"]
+    Redis["ElastiCache Redis (Task04)"]
+    Cognito["Cognito (Task09)"]
+    GH["GitHub Actions (Task11)"]
+    CW["CloudWatch (Task12)"]
+
+    subgraph VPC["VPC / Subnets (Task01) + SG (Task02)"]
+        subgraph PublicSubnet["Public Subnet"]
+            ALB
+        end
+        subgraph PrivateSubnet["Private Subnet"]
+            ECSFront
+            ECSBack
+            RDS
+            Redis
+        end
+    end
+
+    Browser --> R53 --> CF
+    CF --> S3
+    CF --> ALB
+    ALB -->|"/*"| ECSFront
+    ALB -->|"/api/*"| ECSBack
+    ECSBack --> RDS
+    ECSBack --> Redis
+    ECR -.->|Pull| ECSFront
+    ECR -.->|Pull| ECSBack
+    Cognito -.->|Auth| ECSBack
+    GH -.->|Deploy| ECR
+    CW -.->|Monitor| ALB
+    CW -.->|Monitor| ECSBack
+
+    classDef highlight fill:#ff9900,stroke:#cc6600,color:#000,font-weight:bold
+    class CW highlight
+```
+
+**今回構築する箇所:** CloudWatch Dashboards + Alarms + SNS - インフラ全体の監視・アラート通知をTerraformで管理する
+
+---
+
 > 前提: [コンソール版 Task 12](../console/12_monitoring.md) を完了済みであること
 > 参照ナレッジ: [12_observability.md](../knowledge/12_observability.md)
 
@@ -47,6 +101,30 @@ dashboard_body = jsonencode({
     { ... },                   # ← 複数のウィジェット
   ]
 })
+```
+
+---
+
+## Terraformリソース依存グラフ
+
+> 図: Task12 で作成するTerraformリソースの依存関係
+
+```mermaid
+graph LR
+    SNS["aws_sns_topic<br/>.alerts"]
+    Sub["aws_sns_topic_subscription<br/>.email"]
+    AlarmCPU["aws_cloudwatch_metric_alarm<br/>.backend_cpu_high"]
+    AlarmStorage["aws_cloudwatch_metric_alarm<br/>.rds_storage_low"]
+    AlarmALB["aws_cloudwatch_metric_alarm<br/>.alb_5xx_high"]
+    Dashboard["aws_cloudwatch_dashboard<br/>.main"]
+
+    SNS --> Sub
+    SNS --> AlarmCPU
+    SNS --> AlarmStorage
+    SNS --> AlarmALB
+
+    classDef tf fill:#7b42bc,stroke:#5a2e8a,color:#fff
+    class SNS,Sub,AlarmCPU,AlarmStorage,AlarmALB,Dashboard tf
 ```
 
 ---

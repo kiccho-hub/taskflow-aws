@@ -123,6 +123,41 @@ ECSがローリングアップデート実行
 新しいタスクが起動 → ヘルスチェック通過 → 古いタスクを停止
 ```
 
+> 図: GitHub ActionsのCI/CDパイプラインフロー（コードプッシュからECSデプロイまで）
+
+```mermaid
+flowchart TD
+    Push["👤 git push origin main"]
+
+    Push --> Trigger["GitHub Actions\nワークフロー起動"]
+
+    subgraph CI["CI フェーズ（テスト・ビルド）"]
+        Lint["① Lintチェック\nnpm run lint"]
+        Test["② 単体テスト\nnpm test"]
+        Build["③ Dockerイメージビルド\ndocker build"]
+        Lint --> Test --> Build
+    end
+
+    subgraph CD_ECR["CD フェーズ（ECRプッシュ）"]
+        OIDC["④ OIDC認証\nGitHub → AWS STS\n一時的な認証情報取得"]
+        ECR_Login["⑤ ECRログイン\naws ecr get-login-password"]
+        ECR_Push["⑥ ECRへプッシュ\ndocker push\nイメージタグ: main-<SHA>"]
+        OIDC --> ECR_Login --> ECR_Push
+    end
+
+    subgraph CD_ECS["CD フェーズ（ECSデプロイ）"]
+        ECS_Update["⑦ ECSサービス更新\naws ecs update-service"]
+        Rolling["⑧ ローリングアップデート\n新タスク起動 → ヘルスチェック通過\n→ 旧タスク停止"]
+        ECS_Update --> Rolling
+    end
+
+    Trigger --> CI
+    CI --> CD_ECR
+    CD_ECR --> CD_ECS
+
+    Rolling --> Done["✅ デプロイ完了"]
+```
+
 `--force-new-deployment` はタスク定義が変わっていなくても新しいタスクを起動させるフラグ。イメージのlatestタグを更新した場合に使う。本番では特定タグのイメージをタスク定義に記録してから更新する方が安全。
 
 ---
@@ -142,6 +177,35 @@ aws cloudfront create-invalidation --paths "/*"
 `--delete` フラグ：S3に残っている古いファイル（前のビルドには存在したが今のビルドにはないファイル）を削除する。これを付けないと古いファイルが残り続ける。
 
 ---
+
+> 図: dev環境とprod環境のデプロイフロー差分
+
+```mermaid
+flowchart LR
+    subgraph ブランチ戦略
+        Dev_Branch["develop ブランチ"]
+        Main_Branch["main ブランチ"]
+    end
+
+    subgraph dev環境デプロイ
+        Dev_Build["ビルド・テスト"]
+        Dev_ECR["ECRプッシュ\n:dev-latest タグ"]
+        Dev_ECS["ECSサービス更新\n（自動デプロイ）"]
+        Dev_Build --> Dev_ECR --> Dev_ECS
+    end
+
+    subgraph prod環境デプロイ
+        Prod_Build["ビルド・テスト"]
+        Prod_ECR["ECRプッシュ\n:main-<SHA> タグ"]
+        Approval["🔒 手動承認\nEnvironment Protection\n（担当者が確認）"]
+        Prod_ECS["ECSサービス更新\n（Multi-AZ ローリング）"]
+        Invalidate["CloudFront\nキャッシュ無効化"]
+        Prod_Build --> Prod_ECR --> Approval --> Prod_ECS --> Invalidate
+    end
+
+    Dev_Branch -->|push| dev環境デプロイ
+    Main_Branch -->|push / PR merge| prod環境デプロイ
+```
 
 ## ワークフローのベストプラクティス
 

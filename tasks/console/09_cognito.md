@@ -1,5 +1,59 @@
 # Task 9: Cognito 認証設定（コンソール）
 
+## 全体構成における位置づけ
+
+> 図: TaskFlow全体アーキテクチャ（オレンジ色が今回構築するコンポーネント）
+
+```mermaid
+graph TD
+    Browser["🌐 Browser"]
+    R53["Route 53"]
+    CF["CloudFront (Task10)"]
+    S3["S3 (Task10)"]
+    ALB["ALB (Task07)"]
+    ECSFront["ECS Frontend (Task06/08)"]
+    ECSBack["ECS Backend (Task06/08)"]
+    ECR["ECR (Task05)"]
+    RDS["RDS PostgreSQL (Task03)"]
+    Redis["ElastiCache Redis (Task04)"]
+    Cognito["Cognito (Task09)"]
+    GH["GitHub Actions (Task11)"]
+    CW["CloudWatch (Task12)"]
+
+    subgraph VPC["VPC / Subnets (Task01) + SG (Task02)"]
+        subgraph PublicSubnet["Public Subnet"]
+            ALB
+        end
+        subgraph PrivateSubnet["Private Subnet"]
+            ECSFront
+            ECSBack
+            RDS
+            Redis
+        end
+    end
+
+    Browser --> R53 --> CF
+    CF --> S3
+    CF --> ALB
+    ALB -->|"/*"| ECSFront
+    ALB -->|"/api/*"| ECSBack
+    ECSBack --> RDS
+    ECSBack --> Redis
+    ECR -.->|Pull| ECSFront
+    ECR -.->|Pull| ECSBack
+    Cognito -.->|Auth| ECSBack
+    GH -.->|Deploy| ECR
+    CW -.->|Monitor| ALB
+    CW -.->|Monitor| ECSBack
+
+    classDef highlight fill:#ff9900,stroke:#cc6600,color:#000,font-weight:bold
+    class Cognito highlight
+```
+
+**今回構築する箇所:** Cognito User Pool + Groups（Guest/User/Admin）- Task09。ユーザー認証基盤を構築し、JWTトークンでAPIの認可を行う。
+
+---
+
 > 参照ナレッジ: [09_authentication.md](../knowledge/09_authentication.md)
 
 ## このタスクのゴール
@@ -81,6 +135,29 @@ TaskFlow にユーザー認証（ログイン機能）を追加する。
 6. **「ユーザープールを作成」**
 
 ### Step 2: ユーザーグループの作成
+
+> 図: Cognitoの認証フロー（ログイン → JWTトークン → API認可）
+
+```mermaid
+sequenceDiagram
+    participant User as ユーザー (ブラウザ)
+    participant React as React App
+    participant Cognito as Cognito\nUser Pool
+    participant API as ECS Backend\n(Node.js API)
+
+    User->>React: メール + パスワード入力
+    React->>Cognito: SRP認証リクエスト\n(パスワードを平文送信しない)
+    Cognito-->>React: IDトークン + アクセストークン\n(JWT形式)
+    
+    Note over React: JWTをローカルストレージに保存
+    
+    React->>API: APIリクエスト\nAuthorization: Bearer <JWTトークン>
+    API->>Cognito: トークン検証\n(公開鍵で署名確認)
+    Cognito-->>API: ユーザー情報 + グループ情報\n(cognito:groups: ["Admin"])
+    API-->>React: レスポンス\n(グループ権限に応じた結果)
+
+    Note over API: グループで権限判定\nAdmin > User > Guest
+```
 
 1. 作成した `taskflow-user-pool` をクリック → **「グループ」タブ** → **「グループを作成」**
 

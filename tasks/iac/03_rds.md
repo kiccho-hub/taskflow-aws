@@ -1,5 +1,81 @@
 # Task 3: RDS PostgreSQL 構築（IaC）
 
+## 全体構成における位置づけ
+
+> 図: TaskFlow全体アーキテクチャ（オレンジ色が今回構築するコンポーネント）
+
+```mermaid
+graph TD
+    Browser["🌐 Browser"]
+    R53["Route 53"]
+    CF["CloudFront (Task10)"]
+    S3["S3 (Task10)"]
+    ALB["ALB (Task07)"]
+    ECSFront["ECS Frontend (Task06/08)"]
+    ECSBack["ECS Backend (Task06/08)"]
+    ECR["ECR (Task05)"]
+    RDS["RDS PostgreSQL (Task03)"]
+    Redis["ElastiCache Redis (Task04)"]
+    Cognito["Cognito (Task09)"]
+    GH["GitHub Actions (Task11)"]
+    CW["CloudWatch (Task12)"]
+
+    subgraph VPC["VPC / Subnets (Task01) + SG (Task02)"]
+        subgraph PublicSubnet["Public Subnet"]
+            ALB
+        end
+        subgraph PrivateSubnet["Private Subnet"]
+            ECSFront
+            ECSBack
+            RDS
+            Redis
+        end
+    end
+
+    Browser --> R53 --> CF
+    CF --> S3
+    CF --> ALB
+    ALB -->|"/*"| ECSFront
+    ALB -->|"/api/*"| ECSBack
+    ECSBack --> RDS
+    ECSBack --> Redis
+    ECR -.->|Pull| ECSFront
+    ECR -.->|Pull| ECSBack
+    Cognito -.->|Auth| ECSBack
+    GH -.->|Deploy| ECR
+    CW -.->|Monitor| ALB
+    CW -.->|Monitor| ECSBack
+
+    classDef highlight fill:#ff9900,stroke:#cc6600,color:#000,font-weight:bold
+    class RDS highlight
+```
+
+**今回構築する箇所:** RDS PostgreSQL（Task03）。バックエンドECSからのみアクセス可能なプライベートサブネット内のデータベース。
+
+---
+
+> 図: Terraformリソース依存グラフ（Task03）
+
+```mermaid
+graph TD
+    SubPrivA["aws_subnet.private_a\n（Task01）"]
+    SubPrivC["aws_subnet.private_c\n（Task01）"]
+    SG_RDS["aws_security_group.rds\n（Task02）"]
+    SubnetGrp["aws_db_subnet_group.main\n（taskflow-db-subnet）"]
+    ParamGrp["aws_db_parameter_group.main\n（taskflow-pg16）"]
+    RDS["aws_db_instance.main\n（taskflow-db）"]
+    Password["var.db_password\n（sensitive変数）"]
+
+    SubPrivA --> SubnetGrp
+    SubPrivC --> SubnetGrp
+    SubnetGrp --> RDS
+    SG_RDS --> RDS
+    ParamGrp --> RDS
+    Password --> RDS
+```
+
+---
+
 > 前提: [コンソール版 Task 3](../console/03_rds.md) を完了済みであること
 > 参照ナレッジ: [03_rds.md](../knowledge/03_rds.md)
 

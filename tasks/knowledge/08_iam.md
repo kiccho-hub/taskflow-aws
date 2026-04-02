@@ -19,6 +19,53 @@ Task 8（ECSサービス・タスク定義）の前に理解しておくべきIA
 | ロール | サービスや一時的な操作のための権限（パスワードなし） |
 | ポリシー | 何を許可/拒否するかを定義したJSONのルール |
 
+> 図: IAMの概念図（User/Group/Role/Policy/Resourceの関係）
+
+```mermaid
+graph TD
+    subgraph 人間
+        U1["👤 IAMユーザーA"]
+        U2["👤 IAMユーザーB"]
+    end
+
+    subgraph グループ
+        G["👥 Developersグループ"]
+    end
+
+    subgraph AWSサービス
+        ECS["ECSタスク"]
+        Lambda["Lambda"]
+    end
+
+    subgraph ポリシー
+        P1["📄 管理ポリシー\nAmazonS3ReadOnly"]
+        P2["📄 インラインポリシー\nmy-custom-policy"]
+        P3["📄 管理ポリシー\nAmazonECSTaskExecutionRolePolicy"]
+    end
+
+    subgraph ロール
+        R["🎭 ECSタスクロール"]
+    end
+
+    subgraph AWSリソース
+        S3["🗄 S3バケット"]
+        CW["📊 CloudWatch Logs"]
+        ECR["📦 ECR"]
+    end
+
+    U1 --> G
+    U2 --> G
+    G -->|アタッチ| P1
+    P1 -->|許可| S3
+
+    ECS -->|AssumeRole| R
+    R -->|アタッチ| P2
+    R -->|アタッチ| P3
+    P2 -->|許可| S3
+    P3 -->|許可| CW
+    P3 -->|許可| ECR
+```
+
 ---
 
 ## ユーザーとロールの使い分け
@@ -87,6 +134,32 @@ ECSタスクのロールの場合：
 ## ECSの2種類のロールの使い分け（復習）
 
 Task 8で必要になるため詳しく整理しておく。
+
+> 図: ECSタスクロールの権限委譲フロー（タスク実行ロールとタスクロールの使い分け）
+
+```mermaid
+sequenceDiagram
+    participant ECS_CP as ECSコントロールプレーン
+    participant STS as AWS STS
+    participant EXEC_ROLE as タスク実行ロール
+    participant TASK_ROLE as タスクロール
+    participant ECR as ECR
+    participant CW as CloudWatch Logs
+    participant App as コンテナ内アプリ
+    participant S3 as S3
+
+    Note over ECS_CP,ECR: タスク起動前の準備（実行ロールを使用）
+    ECS_CP ->> STS: AssumeRole（タスク実行ロール）
+    STS -->> ECS_CP: 一時的な認証情報
+    ECS_CP ->> ECR: Dockerイメージをpull
+    ECS_CP ->> CW: ロググループ作成
+
+    Note over App,S3: タスク起動後（タスクロールを使用）
+    App ->> STS: AssumeRole（タスクロール）
+    STS -->> App: 一時的な認証情報
+    App ->> S3: PutObject（画像アップロード等）
+    App ->> CW: ログの書き込み
+```
 
 **タスク実行ロール（execution_role_arn）：**
 ECS**コントロールプレーン**（AWSのECS基盤）が使う権限。タスク起動前の準備作業に使う。

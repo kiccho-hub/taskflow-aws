@@ -1,5 +1,59 @@
 # Task 11: GitHub Actions CI/CD（IaC）
 
+## 全体構成における位置づけ
+
+> 図: TaskFlow全体アーキテクチャ（オレンジ色が今回構築するコンポーネント）
+
+```mermaid
+graph TD
+    Browser["🌐 Browser"]
+    R53["Route 53"]
+    CF["CloudFront (Task10)"]
+    S3["S3 (Task10)"]
+    ALB["ALB (Task07)"]
+    ECSFront["ECS Frontend (Task06/08)"]
+    ECSBack["ECS Backend (Task06/08)"]
+    ECR["ECR (Task05)"]
+    RDS["RDS PostgreSQL (Task03)"]
+    Redis["ElastiCache Redis (Task04)"]
+    Cognito["Cognito (Task09)"]
+    GH["GitHub Actions (Task11)"]
+    CW["CloudWatch (Task12)"]
+
+    subgraph VPC["VPC / Subnets (Task01) + SG (Task02)"]
+        subgraph PublicSubnet["Public Subnet"]
+            ALB
+        end
+        subgraph PrivateSubnet["Private Subnet"]
+            ECSFront
+            ECSBack
+            RDS
+            Redis
+        end
+    end
+
+    Browser --> R53 --> CF
+    CF --> S3
+    CF --> ALB
+    ALB -->|"/*"| ECSFront
+    ALB -->|"/api/*"| ECSBack
+    ECSBack --> RDS
+    ECSBack --> Redis
+    ECR -.->|Pull| ECSFront
+    ECR -.->|Pull| ECSBack
+    Cognito -.->|Auth| ECSBack
+    GH -.->|Deploy| ECR
+    CW -.->|Monitor| ALB
+    CW -.->|Monitor| ECSBack
+
+    classDef highlight fill:#ff9900,stroke:#cc6600,color:#000,font-weight:bold
+    class GH highlight
+```
+
+**今回構築する箇所:** GitHub Actions OIDC + IAM Roles for CI/CD - パスワードなしでGitHub ActionsがAWSにアクセスできるOIDC連携をTerraformで管理する
+
+---
+
 > 前提: [コンソール版 Task 11](../console/11_cicd.md) を完了済みであること
 > 参照ナレッジ: [11_cicd.md](../knowledge/11_cicd.md)
 
@@ -59,6 +113,46 @@ data "tls_certificate" "github" {
 # ↑ GitHubのOIDCエンドポイントからSSL証明書情報を取得する
 # ↑ フィンガープリントをハードコードすると、GitHub側の証明書更新時に手動対応が必要になる
 # ↑ data ソースで動的に取得することで自動追従できる
+```
+
+---
+
+## Terraformリソース依存グラフ
+
+> 図: Task11 で作成するTerraformリソースの依存関係
+
+```mermaid
+graph LR
+    TLS["data.tls_certificate<br/>.github"]
+    OIDC["aws_iam_openid_connect_provider<br/>.github"]
+    Role["aws_iam_role<br/>.github_actions"]
+    Policy["aws_iam_role_policy<br/>.github_actions"]
+
+    TLS --> OIDC
+    OIDC --> Role
+    Role --> Policy
+
+    classDef tf fill:#7b42bc,stroke:#5a2e8a,color:#fff
+    classDef data fill:#1a73e8,stroke:#0d47a1,color:#fff
+    class OIDC,Role,Policy tf
+    class TLS data
+```
+
+> 図: GitHub Actions から AWS へのデプロイフロー（OIDCトークン認証）
+
+```mermaid
+sequenceDiagram
+    participant GH as GitHub Actions
+    participant GHOIDC as GitHub OIDC Provider
+    participant STS as AWS STS
+    participant AWS as AWS Services
+
+    GH->>GHOIDC: OIDCトークンを要求
+    GHOIDC-->>GH: JWTトークン発行
+    GH->>STS: AssumeRoleWithWebIdentity（JWTを提示）
+    STS->>STS: 信頼ポリシーを検証<br/>（リポジトリ・ブランチを確認）
+    STS-->>GH: 一時的なAWS認証情報を返す
+    GH->>AWS: 認証情報でECR/ECS/S3に操作
 ```
 
 ---

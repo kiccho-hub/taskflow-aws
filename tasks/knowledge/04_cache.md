@@ -13,6 +13,42 @@ Task 4（ElastiCache Redis構築）の前に理解しておくべき概念。
 - Redisへのアクセスは0.1ms以下
 - 同じデータが何度も参照されるAPIにキャッシュを挟むとレスポンスタイムが10〜100倍改善できる
 
+> 図: キャッシュヒット / キャッシュミスのフロー（Redisがある場合と無い場合の違い）
+
+```mermaid
+flowchart TD
+    Client["クライアント\n（ブラウザ）"]
+
+    subgraph CacheHit["キャッシュヒット（高速）"]
+        CH_App["ECS Backend"]
+        CH_Redis["Redis\n（キャッシュあり ✅）"]
+        CH_Client["レスポンス\n⚡ 0.1ms 以下"]
+    end
+
+    subgraph CacheMiss["キャッシュミス（初回 or TTL切れ）"]
+        CM_App["ECS Backend"]
+        CM_Redis["Redis\n（キャッシュなし ❌）"]
+        CM_RDS["RDS PostgreSQL"]
+        CM_Store["Redis にキャッシュ保存"]
+        CM_Client["レスポンス\n🐢 数ms〜数十ms"]
+    end
+
+    Client -->|"GET /api/tasks"| CH_App
+    CH_App -->|"キャッシュ確認"| CH_Redis
+    CH_Redis -->|"データを返す"| CH_Client
+
+    Client -->|"GET /api/tasks\n（初回 or 期限切れ）"| CM_App
+    CM_App -->|"キャッシュ確認"| CM_Redis
+    CM_Redis -->|"データなし"| CM_App
+    CM_App -->|"SQLクエリ"| CM_RDS
+    CM_RDS -->|"データ返却"| CM_App
+    CM_App -->|"TTL付きで保存"| CM_Store
+    CM_App -->|"データを返す"| CM_Client
+
+    style CacheHit fill:#e8f5e9,stroke:#2e7d32
+    style CacheMiss fill:#fff3e0,stroke:#ef6c00
+```
+
 ---
 
 ## Redisとは
@@ -54,6 +90,30 @@ AWSのElastiCacheは2種類のエンジンを提供する。
 | 用途 | ほぼ全てのユースケース | シンプルなキャッシュのみ |
 
 特別な理由がない限り**Redisを選ぶ**。
+
+> 図: Redis の読み書きフローとデータ型の活用例（TaskFlow での用途）
+
+```mermaid
+flowchart LR
+    App["ECS Backend\nNode.js"]
+
+    subgraph Redis["ElastiCache Redis"]
+        Session["String型\nセッション管理\nkey: session:{userId}\nvalue: {token, expires}"]
+        TaskCache["String型\nAPIキャッシュ\nkey: tasks:{userId}\nvalue: JSON文字列\nTTL: 60秒"]
+    end
+
+    App -->|"SET session:123 {...} EX 1800"| Session
+    App -->|"GET session:123"| Session
+    Session -->|"セッションデータ返却\n（0.1ms以下）"| App
+
+    App -->|"SET tasks:123 [...] EX 60"| TaskCache
+    App -->|"GET tasks:123"| TaskCache
+    TaskCache -->|"キャッシュデータ返却"| App
+
+    style Redis fill:#fce4ec,stroke:#c62828
+    style Session fill:#f8bbd0,stroke:#c62828
+    style TaskCache fill:#f8bbd0,stroke:#c62828
+```
 
 ---
 

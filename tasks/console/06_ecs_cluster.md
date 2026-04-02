@@ -1,5 +1,102 @@
 # Task 6: ECS クラスター構築（コンソール）
 
+## 全体構成における位置づけ
+
+> 図: TaskFlow全体アーキテクチャ（オレンジ色が今回構築するコンポーネント）
+
+```mermaid
+graph TD
+    Browser["🌐 Browser"]
+    R53["Route 53"]
+    CF["CloudFront (Task10)"]
+    S3["S3 (Task10)"]
+    ALB["ALB (Task07)"]
+    ECSFront["ECS Frontend (Task06/08)"]
+    ECSBack["ECS Backend (Task06/08)"]
+    ECR["ECR (Task05)"]
+    RDS["RDS PostgreSQL (Task03)"]
+    Redis["ElastiCache Redis (Task04)"]
+    Cognito["Cognito (Task09)"]
+    GH["GitHub Actions (Task11)"]
+    CW["CloudWatch (Task12)"]
+
+    subgraph VPC["VPC / Subnets (Task01) + SG (Task02)"]
+        subgraph PublicSubnet["Public Subnet"]
+            ALB
+        end
+        subgraph PrivateSubnet["Private Subnet"]
+            ECSFront
+            ECSBack
+            RDS
+            Redis
+        end
+    end
+
+    Browser --> R53 --> CF
+    CF --> S3
+    CF --> ALB
+    ALB -->|"/*"| ECSFront
+    ALB -->|"/api/*"| ECSBack
+    ECSBack --> RDS
+    ECSBack --> Redis
+    ECR -.->|Pull| ECSFront
+    ECR -.->|Pull| ECSBack
+    Cognito -.->|Auth| ECSBack
+    GH -.->|Deploy| ECR
+    CW -.->|Monitor| ALB
+    CW -.->|Monitor| ECSBack
+
+    classDef highlight fill:#ff9900,stroke:#cc6600,color:#000,font-weight:bold
+    class ECSFront,ECSBack highlight
+```
+
+**今回構築する箇所:** ECS Cluster（Task06）- コンテナを動かす基盤（Cluster + IAMロール）
+
+---
+
+> 図: ECS Cluster / Service / Task の階層構造
+
+```mermaid
+graph TB
+    subgraph Cluster["ECS Cluster: taskflow-cluster\n(Fargate インフラ)"]
+        subgraph ServiceFront["Service: taskflow-frontend-service\n(Task08で作成)"]
+            TaskFront1["Task (コンテナ)\nNginx:80\n(desired: 1〜)"]
+            TaskFront2["Task (コンテナ)\nNginx:80\n(スケールアウト時)"]
+        end
+        subgraph ServiceBack["Service: taskflow-backend-service\n(Task08で作成)"]
+            TaskBack1["Task (コンテナ)\nNode.js:3000\n(desired: 1〜)"]
+            TaskBack2["Task (コンテナ)\nNode.js:3000\n(スケールアウト時)"]
+        end
+    end
+
+    subgraph TaskDef["Task Definition (Task08で作成)"]
+        TDFront["taskflow-frontend\nCPU/Memory定義\nコンテナイメージURI\n環境変数\nIAMロール"]
+        TDBack["taskflow-backend\nCPU/Memory定義\nコンテナイメージURI\n環境変数 (DB URL等)\nIAMロール"]
+    end
+
+    subgraph IAM["IAM Role (今回作成)"]
+        ExecRole["ecsTaskExecutionRole\n- ECRからのイメージpull\n- CloudWatch Logsへの書き込み"]
+    end
+
+    ECR["ECR\n(taskflow/frontend)\n(taskflow/backend)"]
+
+    TDFront -.->|"インスタンス化"| TaskFront1
+    TDBack -.->|"インスタンス化"| TaskBack1
+    ExecRole -.->|"権限付与"| TaskFront1
+    ExecRole -.->|"権限付与"| TaskBack1
+    ECR -->|"イメージpull"| TaskFront1
+    ECR -->|"イメージpull"| TaskBack1
+
+    classDef highlight fill:#ff9900,stroke:#cc6600,color:#000,font-weight:bold
+    classDef future fill:#f5f5f5,stroke:#999,color:#666,stroke-dasharray: 5 5
+    classDef iam fill:#fff3e0,stroke:#ff9900,color:#000
+    class Cluster highlight
+    class ServiceFront,ServiceBack,TaskFront1,TaskFront2,TaskBack1,TaskBack2 future
+    class ExecRole iam
+```
+
+---
+
 > 参照ナレッジ: [06_ecs_fargate.md](../knowledge/06_ecs_fargate.md)
 
 ## このタスクのゴール

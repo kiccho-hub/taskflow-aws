@@ -1,5 +1,92 @@
 # Task 3: RDS PostgreSQL 構築（コンソール）
 
+## 全体構成における位置づけ
+
+> 図: TaskFlow全体アーキテクチャ（オレンジ色が今回構築するコンポーネント）
+
+```mermaid
+graph TD
+    Browser["🌐 Browser"]
+    R53["Route 53"]
+    CF["CloudFront (Task10)"]
+    S3["S3 (Task10)"]
+    ALB["ALB (Task07)"]
+    ECSFront["ECS Frontend (Task06/08)"]
+    ECSBack["ECS Backend (Task06/08)"]
+    ECR["ECR (Task05)"]
+    RDS["RDS PostgreSQL (Task03)"]
+    Redis["ElastiCache Redis (Task04)"]
+    Cognito["Cognito (Task09)"]
+    GH["GitHub Actions (Task11)"]
+    CW["CloudWatch (Task12)"]
+
+    subgraph VPC["VPC / Subnets (Task01) + SG (Task02)"]
+        subgraph PublicSubnet["Public Subnet"]
+            ALB
+        end
+        subgraph PrivateSubnet["Private Subnet"]
+            ECSFront
+            ECSBack
+            RDS
+            Redis
+        end
+    end
+
+    Browser --> R53 --> CF
+    CF --> S3
+    CF --> ALB
+    ALB -->|"/*"| ECSFront
+    ALB -->|"/api/*"| ECSBack
+    ECSBack --> RDS
+    ECSBack --> Redis
+    ECR -.->|Pull| ECSFront
+    ECR -.->|Pull| ECSBack
+    Cognito -.->|Auth| ECSBack
+    GH -.->|Deploy| ECR
+    CW -.->|Monitor| ALB
+    CW -.->|Monitor| ECSBack
+
+    classDef highlight fill:#ff9900,stroke:#cc6600,color:#000,font-weight:bold
+    class RDS highlight
+```
+
+**今回構築する箇所:** RDS PostgreSQL（Task03）- タスクデータを永続化するリレーショナルDB
+
+---
+
+> 図: RDS配置図（プライベートサブネット内のMulti-AZ構成）
+
+```mermaid
+graph TB
+    ECSBack["ECS Backend\n(taskflow-sg-ecs)"]
+
+    subgraph VPC["taskflow-vpc"]
+        subgraph PrivA["Private Subnet a\n(ap-northeast-1a)"]
+            RDSPrimary["RDS Primary\ntaskflow-db\nPostgreSQL 16\n(db.t3.micro)"]
+        end
+        subgraph PrivC["Private Subnet c\n(ap-northeast-1c)"]
+            RDSStandby["RDS Standby\n(Multi-AZ時のみ)\n※学習環境では無効"]
+        end
+        RDSSG["taskflow-sg-rds\nPort 5432 のみ許可"]
+        SubnetGroup["DB Subnet Group\ntaskflow-db-subnet-group\n(private-a + private-c)"]
+    end
+
+    ECSBack -->|"5432 (PostgreSQL)"| RDSSG
+    RDSSG --> RDSPrimary
+    RDSPrimary -.->|"同期レプリケーション\n(本番Multi-AZ時)"| RDSStandby
+    SubnetGroup -.- RDSPrimary
+    SubnetGroup -.- RDSStandby
+
+    classDef highlight fill:#ff9900,stroke:#cc6600,color:#000,font-weight:bold
+    classDef sg fill:#fff3e0,stroke:#ff9900,color:#000
+    classDef standby fill:#f5f5f5,stroke:#999,color:#666,stroke-dasharray: 5 5
+    class RDSPrimary highlight
+    class RDSSG sg
+    class RDSStandby standby
+```
+
+---
+
 > 参照ナレッジ: [03_rds.md](../knowledge/03_rds.md)
 
 ## このタスクのゴール

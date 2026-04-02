@@ -1,5 +1,94 @@
 # Task 5: ECR リポジトリ作成（コンソール）
 
+## 全体構成における位置づけ
+
+> 図: TaskFlow全体アーキテクチャ（オレンジ色が今回構築するコンポーネント）
+
+```mermaid
+graph TD
+    Browser["🌐 Browser"]
+    R53["Route 53"]
+    CF["CloudFront (Task10)"]
+    S3["S3 (Task10)"]
+    ALB["ALB (Task07)"]
+    ECSFront["ECS Frontend (Task06/08)"]
+    ECSBack["ECS Backend (Task06/08)"]
+    ECR["ECR (Task05)"]
+    RDS["RDS PostgreSQL (Task03)"]
+    Redis["ElastiCache Redis (Task04)"]
+    Cognito["Cognito (Task09)"]
+    GH["GitHub Actions (Task11)"]
+    CW["CloudWatch (Task12)"]
+
+    subgraph VPC["VPC / Subnets (Task01) + SG (Task02)"]
+        subgraph PublicSubnet["Public Subnet"]
+            ALB
+        end
+        subgraph PrivateSubnet["Private Subnet"]
+            ECSFront
+            ECSBack
+            RDS
+            Redis
+        end
+    end
+
+    Browser --> R53 --> CF
+    CF --> S3
+    CF --> ALB
+    ALB -->|"/*"| ECSFront
+    ALB -->|"/api/*"| ECSBack
+    ECSBack --> RDS
+    ECSBack --> Redis
+    ECR -.->|Pull| ECSFront
+    ECR -.->|Pull| ECSBack
+    Cognito -.->|Auth| ECSBack
+    GH -.->|Deploy| ECR
+    CW -.->|Monitor| ALB
+    CW -.->|Monitor| ECSBack
+
+    classDef highlight fill:#ff9900,stroke:#cc6600,color:#000,font-weight:bold
+    class ECR highlight
+```
+
+**今回構築する箇所:** ECR（Task05）- Dockerイメージを保管するプライベートレジストリ
+
+---
+
+> 図: ECRイメージライフサイクル（ビルドからデプロイまでの流れ）
+
+```mermaid
+flowchart LR
+    subgraph Local["ローカル開発環境"]
+        Source["ソースコード\n(app/)"]
+        Build["docker build\n-t taskflow/backend ."]
+        LocalImage["ローカルイメージ\ntaskflow/backend:v1.0"]
+    end
+
+    subgraph ECR_Repo["Amazon ECR\n(プライベートレジストリ)"]
+        Backend["taskflow/backend\n---\nv1.0 (最新)\nv0.9\nv0.8\n...(最大10件保持)"]
+        Frontend["taskflow/frontend\n---\nv1.0 (最新)\nv0.9\n...(最大10件保持)"]
+        Policy["ライフサイクルポリシー\n古い11件目以降を自動削除"]
+    end
+
+    subgraph ECS["ECS Fargate"]
+        Task["タスク起動時に\ndocker pull"]
+    end
+
+    Source --> Build --> LocalImage
+    LocalImage -->|"① aws ecr get-login-password\n② docker tag\n③ docker push"| Backend
+    Backend -.->|"イメージpull\n(NAT Gateway経由)"| Task
+    Frontend -.->|"イメージpull"| Task
+    Policy -.- Backend
+    Policy -.- Frontend
+
+    classDef highlight fill:#ff9900,stroke:#cc6600,color:#000,font-weight:bold
+    classDef local fill:#e8f4fd,stroke:#2196f3,color:#000
+    class Backend,Frontend highlight
+    class Source,Build,LocalImage local
+```
+
+---
+
 > 参照ナレッジ: [05_containers.md](../knowledge/05_containers.md)
 
 ## このタスクのゴール

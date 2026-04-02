@@ -1,5 +1,59 @@
 # Task 10: S3 + CloudFront 設定（IaC）
 
+## 全体構成における位置づけ
+
+> 図: TaskFlow全体アーキテクチャ（オレンジ色が今回構築するコンポーネント）
+
+```mermaid
+graph TD
+    Browser["🌐 Browser"]
+    R53["Route 53"]
+    CF["CloudFront (Task10)"]
+    S3["S3 (Task10)"]
+    ALB["ALB (Task07)"]
+    ECSFront["ECS Frontend (Task06/08)"]
+    ECSBack["ECS Backend (Task06/08)"]
+    ECR["ECR (Task05)"]
+    RDS["RDS PostgreSQL (Task03)"]
+    Redis["ElastiCache Redis (Task04)"]
+    Cognito["Cognito (Task09)"]
+    GH["GitHub Actions (Task11)"]
+    CW["CloudWatch (Task12)"]
+
+    subgraph VPC["VPC / Subnets (Task01) + SG (Task02)"]
+        subgraph PublicSubnet["Public Subnet"]
+            ALB
+        end
+        subgraph PrivateSubnet["Private Subnet"]
+            ECSFront
+            ECSBack
+            RDS
+            Redis
+        end
+    end
+
+    Browser --> R53 --> CF
+    CF --> S3
+    CF --> ALB
+    ALB -->|"/*"| ECSFront
+    ALB -->|"/api/*"| ECSBack
+    ECSBack --> RDS
+    ECSBack --> Redis
+    ECR -.->|Pull| ECSFront
+    ECR -.->|Pull| ECSBack
+    Cognito -.->|Auth| ECSBack
+    GH -.->|Deploy| ECR
+    CW -.->|Monitor| ALB
+    CW -.->|Monitor| ECSBack
+
+    classDef highlight fill:#ff9900,stroke:#cc6600,color:#000,font-weight:bold
+    class CF,S3 highlight
+```
+
+**今回構築する箇所:** S3 + CloudFront + OAC - 静的フロントエンドファイルをS3に格納し、CloudFront経由で世界中に高速配信する
+
+---
+
 > 前提: [コンソール版 Task 10](../console/10_s3_cloudfront.md) を完了済みであること
 > 参照ナレッジ: [10_cdn_storage.md](../knowledge/10_cdn_storage.md)
 
@@ -43,6 +97,31 @@ S3バケット名はグローバルで一意でなければならない。プロ
 ```hcl
 bucket = "taskflow-frontend-${data.aws_caller_identity.current.account_id}"
 # 例: "taskflow-frontend-123456789012"
+```
+
+---
+
+## Terraformリソース依存グラフ
+
+> 図: Task10 で作成するTerraformリソースの依存関係
+
+```mermaid
+graph LR
+    S3["aws_s3_bucket<br/>.frontend"]
+    PAB["aws_s3_bucket_public_access_block<br/>.frontend"]
+    OAC["aws_cloudfront_origin_access_control<br/>.frontend"]
+    CF["aws_cloudfront_distribution<br/>.frontend"]
+    Policy["aws_s3_bucket_policy<br/>.frontend"]
+
+    S3 --> PAB
+    S3 --> CF
+    OAC --> CF
+    CF --> Policy
+    S3 --> Policy
+    PAB -->|depends_on| Policy
+
+    classDef tf fill:#7b42bc,stroke:#5a2e8a,color:#fff
+    class S3,PAB,OAC,CF,Policy tf
 ```
 
 ---
