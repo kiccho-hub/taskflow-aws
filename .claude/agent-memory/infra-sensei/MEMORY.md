@@ -1,0 +1,8 @@
+- [ユーザープロフィール](user_profile.md) — AWS/インフラ初心者、ハンズオン学習中、例え話での説明を好む
+- [2026/04/02 Task1 VPC Console A評価](result_20260402_vpc_console.md) — 総合評価85/100点、苦手：NATコスト管理・ルートテーブルの関連付け
+- [2026/04/02 Task2 セキュリティグループ Console B評価](result_20260402_security_groups_console.md) — 総合評価75/100点、苦手：SGのソース指定（SG参照）・VPC選択の確認
+- [2026/04/02 Task3 RDS Console B評価](result_20260402_rds_console.md) — 総合評価80/100点、苦手：AWSのUI変更への対応・重要設定の事後確認習慣
+- [2026/04/02 Task4 ElastiCache Console A評価](result_20260402_elasticache_console.md) — 総合評価85/100点、得意：UI変化の発見・ノードタイプ理解、要注意：最終確認チェックリストの習慣化
+- [2026/04/02 Task5 ECR Console A評価](result_20260402_ecr_console.md) — 総合評価85/100点、苦手：複数リポジトリへの同じ設定の繰り返し適用漏れ・URI事後確認習慣
+- [2026/04/02 Task6 ECSクラスター Console B評価](result_20260402_ecs_cluster_console.md) — 総合評価80/100点、苦手：IAM信頼エンティティのTask選択・確認チェックリストの習慣化
+- [2026/04/04 Task8 ECSサービス+タスク定義 Console A評価](result_20260404_ecs_services_console.md) — 総合評価80/100点、苦手：タスク間依存関係の事前確認（ECRイメージ未プッシュ問題）
