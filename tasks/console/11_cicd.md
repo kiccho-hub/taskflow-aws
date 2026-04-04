@@ -129,6 +129,8 @@ GitHubリポジトリ → **「Settings」** → **「Secrets and variables」**
 | `AWS_ROLE_ARN` | Step 2でメモしたARN | ワークフローから参照するためSecretsに保存 |
 | `AWS_REGION` | `ap-northeast-1` | 秘密情報ではないがSecretsで管理すると変更時に一箇所で済む |
 | `ECR_REGISTRY` | `<アカウントID>.dkr.ecr.ap-northeast-1.amazonaws.com` | アカウントIDを含むため一応Secretsで管理 |
+| `AWS_ACCOUNT_ID` | `<アカウントID>` | S3バケット名にアカウントIDを含むため |
+| `CLOUDFRONT_DISTRIBUTION_ID` | CloudFrontディストリビューションID（例: `EXXXXXX`）| キャッシュ無効化のためワークフローから参照 |
 
 > **`ECR_REGISTRY` をVariablesではなくSecretsにする理由：** アカウントIDを公開したくないため。Variablesはリポジトリのコントリビューターなら見えてしまう。
 
@@ -265,17 +267,27 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION }}
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package.json
+
       - name: Build frontend
-        run: npm ci && npm run build    # npm ciはpackage-lock.jsonを厳密に使う（installより再現性が高い）
+        working-directory: frontend    # frontend/ サブディレクトリに移動してビルド
+        run: |
+          npm ci                       # package-lock.jsonを厳密に使う（installより再現性が高い）
+          npm run build
 
       - name: Deploy to S3
         run: |
-          aws s3 sync build/ s3://taskflow-frontend-<アカウントID>/ --delete
+          aws s3 sync frontend/build/ s3://taskflow-frontend-${{ secrets.AWS_ACCOUNT_ID }}/ --delete
 
       - name: Invalidate CloudFront cache
         run: |
           aws cloudfront create-invalidation \
-            --distribution-id <DistributionID> \
+            --distribution-id ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }} \
             --paths "/*"    # 全ファイルのキャッシュをクリア
 ```
 

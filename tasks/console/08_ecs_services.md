@@ -179,7 +179,7 @@ graph TD
 | CPU / メモリ | 0.25 vCPU / 512 MB（フロントエンドは軽量） |
 | イメージURI | `<アカウントID>.dkr.ecr.ap-northeast-1.amazonaws.com/taskflow/frontend:latest` |
 | コンテナポート | 80 |
-| 環境変数 | `REACT_APP_API_URL` = `http://<ALBのDNS名>/api` |
+| 環境変数 | `VITE_API_URL` = `http://<ALBのDNS名>/api` |
 | ロググループ | `/ecs/taskflow-frontend` |
 | タグ（Name） | taskflow-frontend |
 | タグ（Environment） | dev |
