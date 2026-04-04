@@ -162,7 +162,9 @@ resource "aws_cognito_user_pool" "main" {
     # ↑ 本番は "DEVELOPER" にして独自ドメインのSESを使う
   }
 
-  tags = { Name = "taskflow-user-pool" }
+  tags = merge(local.common_tags, {
+    Name = "taskflow-user-pool"
+  })
 }
 ```
 
@@ -197,6 +199,8 @@ resource "aws_cognito_user_pool_client" "web" {
 ```
 
 ### ユーザーグループ
+
+> **タグについて：** `aws_cognito_user_group` リソースはAWSがタグ付けをサポートしていないため、`tags` ブロックは設定できません。
 
 ```hcl
 resource "aws_cognito_user_group" "guest" {

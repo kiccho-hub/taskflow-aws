@@ -137,7 +137,9 @@ resource "aws_s3_bucket" "frontend" {
   bucket = "taskflow-frontend-${data.aws_caller_identity.current.account_id}"
   # ↑ アカウントIDをバケット名に含めてグローバル一意性を確保
 
-  tags = { Name = "taskflow-frontend" }
+  tags = merge(local.common_tags, {
+    Name = "taskflow-frontend"
+  })
 }
 
 resource "aws_s3_bucket_public_access_block" "frontend" {
@@ -223,7 +225,9 @@ resource "aws_cloudfront_distribution" "frontend" {
     # ↑ 独自ドメインを使う場合は acm_certificate_arn を指定
   }
 
-  tags = { Name = "taskflow-cloudfront" }
+  tags = merge(local.common_tags, {
+    Name = "taskflow-cloudfront"
+  })
 }
 ```
 

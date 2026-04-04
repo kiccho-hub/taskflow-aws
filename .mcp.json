@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "drawio": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "@drawio/mcp"
+      ],
+      "env": {}
+    }
+  }
+}

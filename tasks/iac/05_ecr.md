@@ -137,7 +137,9 @@ resource "aws_ecr_repository" "backend" {
   # ↑ "IMMUTABLE" = 同じタグに別のイメージを上書き不可（本番推奨）
   # ↑ "MUTABLE"   = 同じタグを上書き可（latestを使い回す場合など）
 
-  tags = { Name = "taskflow-backend" }
+  tags = merge(local.common_tags, {
+    Name = "taskflow-backend"
+  })
 }
 
 resource "aws_ecr_repository" "frontend" {
@@ -149,7 +151,9 @@ resource "aws_ecr_repository" "frontend" {
 
   image_tag_mutability = "IMMUTABLE"
 
-  tags = { Name = "taskflow-frontend" }
+  tags = merge(local.common_tags, {
+    Name = "taskflow-frontend"
+  })
 }
 ```
 

@@ -213,8 +213,34 @@ tags = {                                     # 複数タグの場合
   Name        = "taskflow-vpc"
   Environment = "dev"
   Project     = "taskflow"
+  ManagedBy   = "terraform"
 }
 ```
+
+### 共通タグを `locals` でまとめる（推奨）
+
+同じタグを全リソースに書くのは冗長になりがちです。`locals` ブロックで共通タグをまとめ、`merge()` 関数でリソース固有のタグと組み合わせる方法を推奨します。
+
+```hcl
+locals {
+  common_tags = {
+    Environment = "dev"
+    Project     = "taskflow"
+    ManagedBy   = "terraform"
+  }
+}
+
+# 使用例: 共通タグ + リソース固有のNameタグをマージ
+resource "aws_vpc" "main" {
+  cidr_block = "10.0.0.0/16"
+
+  tags = merge(local.common_tags, {
+    Name = "taskflow-vpc"
+  })
+}
+```
+
+`merge()` 関数は複数のマップを結合します。後から渡したキーが優先されるため、`Name` のような上書きも安全に行えます。
 
 ---
 
@@ -257,6 +283,15 @@ terraform {
 provider "aws" {
   region = "ap-northeast-1"   # 東京リージョン
 }
+
+# locals ブロック: 全リソースで共通して使うタグをまとめて定義する
+locals {
+  common_tags = {
+    Environment = "dev"
+    Project     = "taskflow"
+    ManagedBy   = "terraform"
+  }
+}
 ```
 
 **`~>` バージョン制約の意味：**
@@ -278,7 +313,9 @@ resource "aws_vpc" "main" {
   enable_dns_support   = true    # true/false は引用符なし（文字列の "true" とは別物）
   enable_dns_hostnames = true
 
-  tags = { Name = "taskflow-vpc" }
+  tags = merge(local.common_tags, {
+    Name = "taskflow-vpc"
+  })
 }
 ```
 
@@ -294,7 +331,9 @@ resource "aws_subnet" "public_a" {
   # ↑ パブリックサブネットだけ true にする
   # プライベートサブネットはこの行ごと書かない（デフォルト false）
 
-  tags = { Name = "taskflow-public-a" }
+  tags = merge(local.common_tags, {
+    Name = "taskflow-public-a"
+  })
 }
 
 resource "aws_subnet" "public_c" {
@@ -304,7 +343,9 @@ resource "aws_subnet" "public_c" {
 
   map_public_ip_on_launch = true
 
-  tags = { Name = "taskflow-public-c" }
+  tags = merge(local.common_tags, {
+    Name = "taskflow-public-c"
+  })
 }
 
 resource "aws_subnet" "private_a" {
@@ -313,7 +354,9 @@ resource "aws_subnet" "private_a" {
   availability_zone = "ap-northeast-1a"
   # map_public_ip_on_launch は省略 = デフォルト値（false）が使われる
 
-  tags = { Name = "taskflow-private-a" }
+  tags = merge(local.common_tags, {
+    Name = "taskflow-private-a"
+  })
 }
 
 resource "aws_subnet" "private_c" {
@@ -321,7 +364,9 @@ resource "aws_subnet" "private_c" {
   cidr_block        = "10.0.11.0/24"
   availability_zone = "ap-northeast-1c"
 
-  tags = { Name = "taskflow-private-c" }
+  tags = merge(local.common_tags, {
+    Name = "taskflow-private-c"
+  })
 }
 ```
 
@@ -334,7 +379,9 @@ resource "aws_subnet" "private_c" {
 resource "aws_internet_gateway" "main" {
   vpc_id = aws_vpc.main.id   # このVPCにアタッチする（コンソールでの「アタッチ」操作がこの1行）
 
-  tags = { Name = "taskflow-igw" }
+  tags = merge(local.common_tags, {
+    Name = "taskflow-igw"
+  })
 }
 ```
 
@@ -345,7 +392,9 @@ resource "aws_internet_gateway" "main" {
 resource "aws_eip" "nat" {
   domain = "vpc"   # "vpc" という文字列を渡す（以前は vpc = true という書き方だったが変更された）
 
-  tags = { Name = "taskflow-nat-eip" }
+  tags = merge(local.common_tags, {
+    Name = "taskflow-nat-eip"
+  })
 }
 
 resource "aws_nat_gateway" "main" {
@@ -359,7 +408,9 @@ resource "aws_nat_gateway" "main" {
   depends_on = [aws_internet_gateway.main]
   #              ↑ リソースタイプ.名前 の形式でリストに入れる
 
-  tags = { Name = "taskflow-nat" }
+  tags = merge(local.common_tags, {
+    Name = "taskflow-nat"
+  })
 }
 ```
 
@@ -376,7 +427,9 @@ resource "aws_route_table" "public" {
     gateway_id = aws_internet_gateway.main.id
   }
 
-  tags = { Name = "taskflow-public-rt" }
+  tags = merge(local.common_tags, {
+    Name = "taskflow-public-rt"
+  })
 }
 
 # サブネットとルートテーブルの紐づけは別リソース（aws_route_table_association）
@@ -407,7 +460,9 @@ resource "aws_route_table" "private" {
     nat_gateway_id = aws_nat_gateway.main.id   # NATに向ける（パブリックはIGW、プライベートはNAT）
   }
 
-  tags = { Name = "taskflow-private-rt" }
+  tags = merge(local.common_tags, {
+    Name = "taskflow-private-rt"
+  })
 }
 
 resource "aws_route_table_association" "private_a" {

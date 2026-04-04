@@ -158,6 +158,15 @@ graph TD
 | ロググループ | `/ecs/taskflow-backend` | 自動作成される。CloudWatchでこのグループ名でログを検索できる |
 | ストリームプレフィックス | `ecs` | ログストリームが `ecs/backend/<タスクID>` という形式になる |
 
+**タグ：**（画面下部のタグセクションに設定）
+
+| キー | 値 |
+|------|-----|
+| Name | taskflow-backend |
+| Environment | dev |
+| Project | taskflow |
+| ManagedBy | manual |
+
 2. **「作成」**
 
 ### Step 2: Frontend タスク定義の作成
@@ -172,6 +181,10 @@ graph TD
 | コンテナポート | 80 |
 | 環境変数 | `REACT_APP_API_URL` = `http://<ALBのDNS名>/api` |
 | ロググループ | `/ecs/taskflow-frontend` |
+| タグ（Name） | taskflow-frontend |
+| タグ（Environment） | dev |
+| タグ（Project） | taskflow |
+| タグ（ManagedBy） | manual |
 
 ### Step 3: Backend ECS サービスの作成
 
@@ -241,20 +254,128 @@ graph TD
 
 ## 確認ポイント
 
-1. 各サービスの「最後のステータス」が **「RUNNING」** になっているか（数分待つ）
-2. タスクのステータスが `RUNNING` か `STOPPED`（STOPPEDの場合はログを確認）
-3. ALBのDNS名をブラウザで開いてフロントエンドが表示されるか
-4. `<ALBのDNS>/api/health` にアクセスして `{"status":"ok"}` が返るか
+> **注意：** Task 8 の時点では Docker イメージがまだ ECR にプッシュされていないため、ECS タスクは起動に失敗します（イメージが存在しないため pull できない）。これは正常な状態です。
+> イメージのプッシュは Task 11（CI/CD）で行います。
+>
+> そのため確認ポイントを「**今できる確認**（Task 8 完了時点）」と「**Task 11 完了後の確認**」に分けています。
 
-**タスクが起動しない場合の調査：**
+---
 
-ECS → クラスター → サービス → タスク → 停止したタスクをクリック → **「ログ」タブ** でエラー内容を確認する。
+### 今できる確認（Task 8 完了時点）
 
-よくある原因：
-- ECRのイメージがpushされていない（imageが存在しないためpull失敗）
-- `ecsTaskExecutionRole` が設定されていない
-- セキュリティグループがECSからRDS/Redisへの通信を許可していない
-- 環境変数（DATABASE_URL等）のエンドポイントが間違っている
+#### 確認ポイント 1: タスク定義が正しく作成されているか
+
+**ナビゲーション：**
+ECS → 左メニュー「タスク定義」
+
+**確認する内容：**
+- `taskflow-backend` と `taskflow-frontend` の両方が一覧に表示されているか
+- それぞれをクリックして最新リビジョン（:1）を開き、以下の設定値が正しいか確認する
+
+| 確認項目 | Backend の期待値 | Frontend の期待値 |
+|---------|----------------|-----------------|
+| 起動タイプ | FARGATE | FARGATE |
+| CPU | 0.5 vCPU | 0.25 vCPU |
+| メモリ | 1 GB | 512 MB |
+| タスク実行ロール | `ecsTaskExecutionRole` | `ecsTaskExecutionRole` |
+| コンテナポート | 3000 | 80 |
+| ログドライバー | awslogs | awslogs |
+| ロググループ | `/ecs/taskflow-backend` | `/ecs/taskflow-frontend` |
+
+---
+
+#### 確認ポイント 2: サービスが正しく作成されているか
+
+**ナビゲーション：**
+ECS → 左メニュー「クラスター」→ `taskflow-cluster` → 「サービス」タブ
+
+**確認する内容：**
+- `taskflow-backend-svc` と `taskflow-frontend-svc` の両方が一覧に表示されているか
+- 「ステータス」列が **「ACTIVE」** になっているか（タスクが RUNNING でなくても ACTIVE であれば作成は成功している）
+- 「必要なタスク数」列が `0` になっているか（再起動ループを止めるために 0 に設定した状態）
+
+> **「ACTIVE」と「RUNNING」の違い：**
+> - ACTIVE = サービス自体は正常に存在している（タスクが起動できない状態でも ACTIVE になる）
+> - タスクの RUNNING = コンテナが実際に起動して動いている状態
+> Task 8 時点ではサービスが ACTIVE であれば OK です。
+
+---
+
+#### 確認ポイント 3: desired count が 0 になっているか
+
+**ナビゲーション：**
+ECS → 左メニュー「クラスター」→ `taskflow-cluster` → 「サービス」タブ → `taskflow-backend-svc` をクリック
+
+**確認する内容：**
+- 「必要なタスク数」が `0` になっているか
+- 「実行中のタスク数」が `0` になっているか
+
+> 必要なタスク数が 1 のままだとタスクが起動→失敗→再起動を繰り返す（再起動ループ）。
+> Task 11 でイメージをプッシュした後に必要なタスク数を 1 に戻す。
+> `taskflow-frontend-svc` についても同様に確認する。
+
+---
+
+#### 確認ポイント 4: タスク定義の IAM ロールが正しく設定されているか
+
+**ナビゲーション：**
+ECS → 左メニュー「タスク定義」→ `taskflow-backend` → 最新リビジョンをクリック → 「JSON」タブ
+
+**確認する内容：**
+- `"executionRoleArn"` の値に `ecsTaskExecutionRole` が含まれているか
+  - 例：`"arn:aws:iam::<アカウントID>:role/ecsTaskExecutionRole"`
+- `"taskRoleArn"` が空（`null` または未設定）になっているか（今回はアプリが AWS サービスを直接呼ばないため不要）
+
+> **タスク実行ロールとタスクロールの違い（重要）：**
+> - **タスク実行ロール（executionRoleArn）**：ECS 基盤が使う権限。ECR からイメージを pull する、CloudWatch Logs にログを送るために必要。
+> - **タスクロール（taskRoleArn）**：コンテナ内のアプリが使う権限。アプリが S3 や DynamoDB を呼ぶ場合に設定する。今回は不要。
+
+---
+
+### Task 11 完了後の確認
+
+> **前提：** Task 11（GitHub Actions による CI/CD）で Docker イメージを ECR にプッシュし、ECS サービスの desired count を 1 に戻してから実施する。
+
+#### 確認ポイント 5: タスクが RUNNING になるか
+
+**ナビゲーション：**
+ECS → 左メニュー「クラスター」→ `taskflow-cluster` → 「タスク」タブ
+
+**確認する内容：**
+- 一覧に表示されるタスクの「最後のステータス」が **「RUNNING」** になっているか
+- 数分（2〜5分）待ってもRUNNINGにならない場合は、タスクIDをクリック → 「ログ」タブでエラー内容を確認する
+
+**STOPPED になる場合のよくある原因：**
+- ECR のイメージが存在しない（Task 11 のプッシュが完了しているか確認）
+- `ecsTaskExecutionRole` が ECR へのアクセス権限を持っていない
+- セキュリティグループが ECS から RDS/Redis への通信を許可していない
+- 環境変数（`DATABASE_URL` 等）のエンドポイントが間違っている
+
+---
+
+#### 確認ポイント 6: ALB のターゲットグループのヘルスチェックが healthy になるか
+
+**ナビゲーション：**
+EC2 → 左メニュー「ターゲットグループ」（「ロードバランシング」セクション配下）→ `taskflow-tg-backend` → 「ターゲット」タブ
+
+**確認する内容：**
+- ECS タスクの IP アドレスが登録されているか
+- 「ヘルス状態」列が **「healthy」** になっているか
+
+> 「unhealthy」の場合はヘルスチェックの設定を確認する。
+> 「ヘルスチェック」タブを開き、パスが `/api/health`、ポートが `3000` になっているか確認する。
+> `taskflow-tg-frontend` についても同様に「healthy」になっているか確認する。
+
+---
+
+#### 確認ポイント 7: ブラウザでフロントエンドが表示されるか、`/api/health` が応答するか
+
+**ALB の DNS 名の調べ方：**
+EC2 → 左メニュー「ロードバランサー」→ `taskflow-alb` をクリック → 「詳細」タブの **「DNS 名」** フィールドをコピー
+
+**確認する内容：**
+- `http://<DNS名>/` をブラウザで開き、TaskFlow のフロントエンド画面が表示されるか
+- `http://<DNS名>/api/health` をブラウザで開き、`{"status":"ok"}` という JSON が返るか
 
 ---
 

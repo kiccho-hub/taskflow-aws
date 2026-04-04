@@ -113,7 +113,9 @@ resource "aws_elasticache_subnet_group" "main" {
     aws_subnet.private_c.id,
   ]
 
-  tags = { Name = "taskflow-redis-subnet" }
+  tags = merge(local.common_tags, {
+    Name = "taskflow-redis-subnet"
+  })
 }
 ```
 
@@ -129,7 +131,9 @@ resource "aws_elasticache_parameter_group" "main" {
     value = "allkeys-lru"    # メモリ満杯時にLRU（最も古く使われていないキー）を削除
   }
 
-  tags = { Name = "taskflow-redis7" }
+  tags = merge(local.common_tags, {
+    Name = "taskflow-redis7"
+  })
 }
 ```
 
@@ -156,7 +160,9 @@ resource "aws_elasticache_cluster" "main" {
   # ↑ キャッシュ・セッションデータは消えても再生成できるためバックアップ不要
   #   スナップショットを取ると追加コストが発生する
 
-  tags = { Name = "taskflow-redis" }
+  tags = merge(local.common_tags, {
+    Name = "taskflow-valkey"
+  })
 }
 ```
 

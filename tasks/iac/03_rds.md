@@ -189,7 +189,9 @@ resource "aws_db_subnet_group" "main" {
     aws_subnet.private_c.id,   # ← プライベートサブネットC（末尾カンマOK）
   ]
 
-  tags = { Name = "taskflow-db-subnet" }
+  tags = merge(local.common_tags, {
+    Name = "taskflow-db-subnet"
+  })
 }
 ```
 
@@ -208,7 +210,9 @@ resource "aws_db_parameter_group" "main" {
   }
   # parameter ブロックも複数書くことができる（settingと同じ仕組み）
 
-  tags = { Name = "taskflow-pg16" }
+  tags = merge(local.common_tags, {
+    Name = "taskflow-pg16"
+  })
 }
 ```
 
@@ -244,7 +248,9 @@ resource "aws_db_instance" "main" {
 
   parameter_group_name = aws_db_parameter_group.main.name
 
-  tags = { Name = "taskflow-db" }
+  tags = merge(local.common_tags, {
+    Name = "taskflow-rds-postgres"
+  })
 }
 ```
 

@@ -112,7 +112,9 @@ resource "aws_ecs_cluster" "main" {
     # "disabled" にすると追加コストなし（学習中はどちらでも可）
   }
 
-  tags = { Name = "taskflow-cluster" }
+  tags = merge(local.common_tags, {
+    Name = "taskflow-cluster"
+  })
 }
 ```
 

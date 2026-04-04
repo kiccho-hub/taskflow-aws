@@ -147,7 +147,9 @@ variable "alert_email" {
 resource "aws_sns_topic" "alerts" {
   name = "taskflow-alerts"
 
-  tags = { Name = "taskflow-alerts" }
+  tags = merge(local.common_tags, {
+    Name = "taskflow-alerts"
+  })
 }
 
 resource "aws_sns_topic_subscription" "email" {

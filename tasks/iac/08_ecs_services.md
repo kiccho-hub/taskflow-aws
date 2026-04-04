@@ -167,6 +167,10 @@ resource "aws_iam_role" "ecs_execution" {
       # ↑ ECSタスクがこのロールを引き受けられる（AssumeRole）ことを許可
     }]
   })
+
+  tags = merge(local.common_tags, {
+    Name = "taskflow-ecs-execution-role"
+  })
 }
 
 resource "aws_iam_role_policy_attachment" "ecs_execution" {
@@ -189,6 +193,10 @@ resource "aws_iam_role" "ecs_task" {
       Action    = "sts:AssumeRole"
     }]
   })
+
+  tags = merge(local.common_tags, {
+    Name = "taskflow-ecs-task-role"
+  })
 }
 # アプリがS3等のAWSサービスを呼ぶ場合はここにポリシーをアタッチする
 ```
@@ -200,14 +208,18 @@ resource "aws_cloudwatch_log_group" "backend" {
   name              = "/ecs/taskflow-backend"    # AWSの規則: /ecs/ プレフィックス推奨
   retention_in_days = 30    # 30日後に自動削除（無制限はコストが増えるため要設定）
 
-  tags = { Name = "taskflow-backend-logs" }
+  tags = merge(local.common_tags, {
+    Name = "taskflow-backend-logs"
+  })
 }
 
 resource "aws_cloudwatch_log_group" "frontend" {
   name              = "/ecs/taskflow-frontend"
   retention_in_days = 30
 
-  tags = { Name = "taskflow-frontend-logs" }
+  tags = merge(local.common_tags, {
+    Name = "taskflow-frontend-logs"
+  })
 }
 ```
 

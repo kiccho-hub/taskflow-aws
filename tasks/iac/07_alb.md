@@ -152,7 +152,9 @@ resource "aws_lb" "main" {
   #   enabled = true
   # }
 
-  tags = { Name = "taskflow-alb" }
+  tags = merge(local.common_tags, {
+    Name = "taskflow-alb"
+  })
 }
 ```
 
@@ -182,7 +184,9 @@ resource "aws_lb_target_group" "backend" {
   # ↑ タスク停止時にALBがこの秒数待ってから登録解除（in-flightリクエストを完了させるため）
   # ↑ デフォルト300秒。開発環境は30秒に下げてデプロイを早める
 
-  tags = { Name = "taskflow-backend-tg" }
+  tags = merge(local.common_tags, {
+    Name = "taskflow-backend-tg"
+  })
 }
 
 resource "aws_lb_target_group" "frontend" {
@@ -204,7 +208,9 @@ resource "aws_lb_target_group" "frontend" {
 
   deregistration_delay = 30
 
-  tags = { Name = "taskflow-frontend-tg" }
+  tags = merge(local.common_tags, {
+    Name = "taskflow-frontend-tg"
+  })
 }
 ```
 

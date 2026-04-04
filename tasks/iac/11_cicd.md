@@ -175,6 +175,10 @@ resource "aws_iam_openid_connect_provider" "github" {
   thumbprint_list = data.tls_certificate.github.certificates[*].sha1_fingerprint
   # ↑ スプラット式で全証明書のフィンガープリントを取得
   # ↑ GitHubの証明書が更新されてもTerraformが自動で追従する
+
+  tags = merge(local.common_tags, {
+    Name = "github-oidc-provider"
+  })
 }
 ```
 
@@ -189,6 +193,10 @@ variable "github_repository" {
 
 resource "aws_iam_role" "github_actions" {
   name = "github-actions-taskflow"
+
+  tags = merge(local.common_tags, {
+    Name = "github-actions-taskflow"
+  })
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"

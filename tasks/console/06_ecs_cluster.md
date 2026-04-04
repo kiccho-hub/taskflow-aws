@@ -147,6 +147,15 @@ graph TB
 |------|----|---------|
 | Container Insights を使用 | **有効** | コンテナ単位のCPU・メモリ・ネットワークメトリクスが取れるようになる。問題発生時の調査に不可欠。CloudWatchのコストが若干上がるが有効にする価値がある |
 
+**タグ：**
+
+| キー | 値 |
+|------|-----|
+| Name | taskflow-cluster |
+| Environment | dev |
+| Project | taskflow |
+| ManagedBy | manual |
+
 2. **「作成」**
 
 ---
@@ -164,3 +173,92 @@ graph TB
 **このタスクをコンソールで完了したら:** [Task 6: ECSクラスター（IaC版）](../iac/06_ecs_cluster.md)
 
 **次のタスク:** [Task 7: ALB 構築・パスベースルーティング](07_alb.md)
+
+---
+
+## 参考: ECR / ECS / Fargate / CloudFormation の関係図
+
+> 図: ECR・ECS・Fargate・IAM・ネットワーク・監視リソースの全体関係
+
+```mermaid
+graph TB
+    subgraph Dev["開発者のPC"]
+        Code["アプリコード\n(Node.js / React)"]
+        Dockerfile["Dockerfile"]
+    end
+
+    subgraph CI["CI/CD (GitHub Actions)"]
+        GH["GitHub Actions"]
+    end
+
+    subgraph Registry["コンテナレジストリ (Task05)"]
+        ECR["ECR\nDockerイメージを保管する倉庫"]
+    end
+
+    subgraph IaC["IaC"]
+        TF["Terraform / CloudFormation\nインフラをコードで定義・管理"]
+    end
+
+    subgraph ECSWorld["ECS の世界"]
+        subgraph Cluster["ECS Cluster: taskflow-cluster (Task06)"]
+            subgraph ServiceFE["ECS Service: Frontend (Task08)\n常にN個動かす監視係"]
+                TaskFE["ECS Task\nコンテナ (Nginx)"]
+            end
+            subgraph ServiceBE["ECS Service: Backend (Task08)\n常にN個動かす監視係"]
+                TaskBE["ECS Task\nコンテナ (Node.js)"]
+            end
+        end
+        TD["Task Definition (Task08)\nコンテナの設計図\n・イメージURI\n・CPU/Mem\n・環境変数\n・IAMロール"]
+        Fargate["AWS Fargate\nサーバーレス実行基盤\nサーバー管理不要"]
+    end
+
+    subgraph IAMRoles["IAM (Task06/08)"]
+        ExecRole["ecsTaskExecutionRole\nECRpull / CWLogs書き込み"]
+        TaskRole["ECS Task Role\nアプリがS3等を呼ぶ権限"]
+        SLRole["AWSServiceRoleForECS\nECSサービス自体の管理権限"]
+    end
+
+    subgraph Network["ネットワーク (Task01/02)"]
+        VPC["VPC"]
+        SG["Security Group\ntaskflow-sg-ecs"]
+        PrivSubnet["Private Subnet"]
+    end
+
+    subgraph Monitoring["監視 (Task12)"]
+        CWLogs["CloudWatch Logs\nコンテナのログ"]
+        CWMetrics["CloudWatch Metrics\nCPU・メモリ等"]
+    end
+
+    Code --> Dockerfile
+    Dockerfile -->|"docker build & push"| GH
+    GH -->|"イメージをpush"| ECR
+    GH -->|"ECS deploy"| ServiceFE
+    GH -->|"ECS deploy"| ServiceBE
+
+    TF -->|"クラスター・サービス・TD を作成"| Cluster
+    TF -->|"IAMロールを作成"| IAMRoles
+
+    ECR -->|"イメージpull (ExecRole経由)"| TaskFE
+    ECR -->|"イメージpull (ExecRole経由)"| TaskBE
+
+    TD -->|"インスタンス化"| TaskFE
+    TD -->|"インスタンス化"| TaskBE
+
+    Fargate -->|"コンテナを起動"| TaskFE
+    Fargate -->|"コンテナを起動"| TaskBE
+
+    ExecRole -->|"権限付与"| TaskFE
+    ExecRole -->|"権限付与"| TaskBE
+    TaskRole -->|"アプリ権限"| TaskBE
+    SLRole -->|"サービス管理"| Cluster
+
+    TaskFE --> PrivSubnet
+    TaskBE --> PrivSubnet
+    PrivSubnet --> VPC
+    SG -->|"トラフィック制御"| TaskFE
+    SG -->|"トラフィック制御"| TaskBE
+
+    TaskFE -->|"ログ送信"| CWLogs
+    TaskBE -->|"ログ送信"| CWLogs
+    Fargate -->|"メトリクス送信"| CWMetrics
+```
