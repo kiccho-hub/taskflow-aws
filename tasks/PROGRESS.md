@@ -14,8 +14,8 @@
 | 7 | ALB パスベースルーティング | ⬜ | ⬜ | ⬜ |
 | 8 | ECS サービス + タスク定義 | ⬜ | ★★★★☆ | ⬜ |
 | 9 | Cognito 認証 | ⬜ | ★★★★☆ | ⬜ |
-| 10 | S3 + CloudFront | ⬜ | ⬜ | ⬜ |
-| 11 | CI/CD パイプライン | ⬜ | ⬜ | ⬜ |
+| 10 | S3 + CloudFront | ⬜ | ★★★★☆ | ⬜ |
+| 11 | CI/CD パイプライン | ⬜ | ★★★★☆ | ⬜ |
 | 12 | CloudWatch 監視 | ⬜ | ⬜ | ⬜ |
 
 ## 凡例
@@ -38,3 +38,8 @@
 
 - **Task 8 Console** ★★★★☆（80点）：ECSタスク定義・サービスの作成を完了。ECRへのイメージ未プッシュに直面し原因を理解、desired countを0に設定して再起動ループを適切に対処。Task 11完了後にRUNNING確認が必要。
 - **Task 9 Console** ★★★★☆（85点）：Cognito新UI（2024年11月以降）でユーザープール作成を完了。「アプリケーションを定義」ステップの追加・Hosted UI廃止などのUI変更を自力で発見・対応。SPAクライアントタイプの選択理由（クライアントシークレット不要）を本質的に理解した。
+
+### 2026-04-05
+
+- **Task 10 Console** ★★★★☆（85点）：S3+CloudFrontの構築を完了。フロントエンドをECSではなくS3+CloudFrontで配信する設計理由を本質から理解。Task 11のデバッグ中にバケット名の不一致（末尾 `-an`）を自力発見。
+- **Task 11 Console** ★★★★☆（88点）：GitHub Actions + AWS OIDCによるCI/CDパイプラインを構築。3つのエラー（AssumeRoleWithWebIdentity / ServiceNotFoundException / NoSuchBucket）を自力でデバッグして完全解決。OIDCの仕組み（短命トークン・アクセスキー不要）を本質から理解した。

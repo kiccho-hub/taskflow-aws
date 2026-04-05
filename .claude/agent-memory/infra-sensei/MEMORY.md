@@ -7,3 +7,5 @@
 - [2026/04/02 Task6 ECSクラスター Console B評価](result_20260402_ecs_cluster_console.md) — 総合評価80/100点、苦手：IAM信頼エンティティのTask選択・確認チェックリストの習慣化
 - [2026/04/04 Task8 ECSサービス+タスク定義 Console A評価](result_20260404_ecs_services_console.md) — 総合評価80/100点、苦手：タスク間依存関係の事前確認（ECRイメージ未プッシュ問題）
 - [2026/04/04 Task9 Cognito Console A評価](result_20260404_cognito_console.md) — 総合評価85/100点、得意：新UI変更点の自力発見・SPA設計の本質理解、要注意：作成後の確認チェックリスト習慣
+- [2026/04/05 Task10 S3+CloudFront Console A評価](result_20260405_s3_cloudfront_console.md) — 総合評価85/100点、得意：S3+CloudFront設計理由の理解、苦手：バケット名など作成後のリソース情報記録
+- [2026/04/05 Task11 CI/CD Console A評価](result_20260405_cicd_console.md) — 総合評価88/100点、得意：OIDC仕組み理解・3エラーの自力デバッグ、苦手：複数サービスまたぐ設定値の名前ズレ
