@@ -32,12 +32,21 @@ jobs:
           docker build -t $ECR_REGISTRY/taskflow/backend:$IMAGE_TAG ./backend
           docker push $ECR_REGISTRY/taskflow/backend:$IMAGE_TAG
 
-      - name: Update ECS service
-        run: |
-          aws ecs update-service \
-            --cluster taskflow-cluster \
-            --service taskflow-backend-service-8zr92cb4 \
-            --force-new-deployment
+      - name: Update ECS task definition with new image
+        id: task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: .github/workflows/task-definition.json
+          container-name: backend
+          image: ${{ secrets.ECR_REGISTRY }}/taskflow/backend:${{ github.sha }}
+
+      - name: Deploy to ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition: ${{ steps.task-def.outputs.task-definition }}
+          service: taskflow-backend-service-8zr92cb4
+          cluster: taskflow-cluster
+          wait-for-service-stability: true
 
   deploy-frontend:
     runs-on: ubuntu-latest
