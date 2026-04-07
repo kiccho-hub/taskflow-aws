@@ -4,6 +4,7 @@
   "requiresCompatibilities": ["FARGATE"],
   "cpu": "256",
   "memory": "512",
+  "executionRoleArn": "arn:aws:iam::840854900854:role/ecsTaskExecutionRole",
   "containerDefinitions": [
     {
       "name": "backend",
@@ -21,8 +22,7 @@
           "awslogs-region": "ap-northeast-1",
           "awslogs-stream-prefix": "ecs"
         }
-      },
-      "executionRoleArn": "arn:aws:iam::840854900854:role/ecsTaskExecutionRole"
+      }
     }
   ]
 }
