@@ -9,3 +9,5 @@
 - [2026/04/04 Task9 Cognito Console A評価](result_20260404_cognito_console.md) — 総合評価85/100点、得意：新UI変更点の自力発見・SPA設計の本質理解、要注意：作成後の確認チェックリスト習慣
 - [2026/04/05 Task10 S3+CloudFront Console A評価](result_20260405_s3_cloudfront_console.md) — 総合評価85/100点、得意：S3+CloudFront設計理由の理解、苦手：バケット名など作成後のリソース情報記録
 - [2026/04/05 Task11 CI/CD Console A評価](result_20260405_cicd_console.md) — 総合評価88/100点、得意：OIDC仕組み理解・3エラーの自力デバッグ、苦手：複数サービスまたぐ設定値の名前ズレ
+- [2026/04/07 Task12 CloudWatch監視 Console A評価](result_20260407_monitoring_console.md) — 総合評価85/100点、得意：ウィジェットタイプ選択・SNS通知設計、要注意：アラームしきい値のチューニング
+- [2026/04/07 全12タスク Consoleフェーズ修了（平均83点）](result_20260407_console_all_complete.md) — 全コンソールタスク完走、得意：デバッグ力・設計理解・UI変更適応、要改善：確認チェックリスト習慣

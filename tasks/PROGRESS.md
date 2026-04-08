@@ -11,12 +11,12 @@
 | 4 | ElastiCache Redis | ⬜ | ★★★★☆ | ⬜ |
 | 5 | ECR コンテナレジストリ | ⬜ | ★★★★☆ | ⬜ |
 | 6 | ECS クラスター + Fargate | ⬜ | ★★★★☆ | ⬜ |
-| 7 | ALB パスベースルーティング | ⬜ | ⬜ | ⬜ |
+| 7 | ALB パスベースルーティング | ⬜ | ★★★★☆ | ⬜ |
 | 8 | ECS サービス + タスク定義 | ⬜ | ★★★★☆ | ⬜ |
 | 9 | Cognito 認証 | ⬜ | ★★★★☆ | ⬜ |
 | 10 | S3 + CloudFront | ⬜ | ★★★★☆ | ⬜ |
 | 11 | CI/CD パイプライン | ⬜ | ★★★★☆ | ⬜ |
-| 12 | CloudWatch 監視 | ⬜ | ⬜ | ⬜ |
+| 12 | CloudWatch 監視 | ⬜ | ★★★★☆ | ⬜ |
 
 ## 凡例
 
@@ -43,3 +43,8 @@
 
 - **Task 10 Console** ★★★★☆（85点）：S3+CloudFrontの構築を完了。フロントエンドをECSではなくS3+CloudFrontで配信する設計理由を本質から理解。Task 11のデバッグ中にバケット名の不一致（末尾 `-an`）を自力発見。
 - **Task 11 Console** ★★★★☆（88点）：GitHub Actions + AWS OIDCによるCI/CDパイプラインを構築。3つのエラー（AssumeRoleWithWebIdentity / ServiceNotFoundException / NoSuchBucket）を自力でデバッグして完全解決。OIDCの仕組み（短命トークン・アクセスキー不要）を本質から理解した。
+
+### 2026-04-07
+
+- **Task 7 Console** ★★★★☆（85点）：ALBとCloudFront統合によるパスベースルーティングを実装。4つの本番エラー（NAT Gateway欠落 / イメージタグ不一致 / API HTML返却 / フロントエンド表示不具合）を体系的にデバッグし解決。CloudFrontのビヘイビア優先度・デフォルトルートオブジェクト・キャッシュポリシーを本質から理解。デバッグ方法論を`debug/deployment_debugging_log.md`に記録。
+- **Task 12 Console** ★★★★☆（85点）：CloudWatchダッシュボード・アラーム作成を完了。メトリクスデータ不足状態の理由を理解。ウィジェットタイプ（Line chart / Number / Stacked area）の選択基準を習得。SNS統合によるAlert配信を実装。全12タスクのコンソール段階完了。
