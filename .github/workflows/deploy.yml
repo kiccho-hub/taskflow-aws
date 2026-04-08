@@ -2,7 +2,7 @@ name: Deploy to AWS
 
 on:
   push:
-    branches: [main] # mainへのpushでのみ実行
+    # branches: [main] # mainへのpushでのみ実行
 
 permissions:
   id-token: write # OIDC認証のためのJWT発行を許可（必須）
