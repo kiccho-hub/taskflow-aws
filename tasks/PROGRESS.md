@@ -6,8 +6,8 @@
 | # | タスク | Knowledge | Console | IaC |
 |---|--------|:---------:|:-------:|:---:|
 | 1 | VPC・サブネット・ゲートウェイ | 📖 | ★★★★★ | ★★★★★ |
-| 2 | セキュリティグループ | ⬜ | ★★★☆☆ | ⬜ |
-| 3 | RDS PostgreSQL | ⬜ | ★★★★☆ | ⬜ |
+| 2 | セキュリティグループ | ⬜ | ★★★☆☆ | ★★★★☆ |
+| 3 | RDS PostgreSQL | ⬜ | ★★★★☆ | ★★★★☆ |
 | 4 | ElastiCache Redis | ⬜ | ★★★★☆ | ⬜ |
 | 5 | ECR コンテナレジストリ | ⬜ | ★★★★☆ | ⬜ |
 | 6 | ECS クラスター + Fargate | ⬜ | ★★★★☆ | ⬜ |
@@ -52,3 +52,8 @@
 
 - **Task 7 Console** ★★★★☆（85点）：ALBとCloudFront統合によるパスベースルーティングを実装。4つの本番エラー（NAT Gateway欠落 / イメージタグ不一致 / API HTML返却 / フロントエンド表示不具合）を体系的にデバッグし解決。CloudFrontのビヘイビア優先度・デフォルトルートオブジェクト・キャッシュポリシーを本質から理解。デバッグ方法論を`debug/deployment_debugging_log.md`に記録。
 - **Task 12 Console** ★★★★☆（85点）：CloudWatchダッシュボード・アラーム作成を完了。メトリクスデータ不足状態の理由を理解。ウィジェットタイプ（Line chart / Number / Stacked area）の選択基準を習得。SNS統合によるAlert配信を実装。全12タスクのコンソール段階完了。
+
+### 2026-04-14
+
+- **Task 2 IaC** ★★★★☆（85点）：セキュリティグループの Terraform 実装を完了。Frontend / Backend / RDS / ElastiCache の4つの SG を分離設計し、通信パターン（FE→ALB→Backend→RDS）を正確に表現。`source_security_group_id`での SG 間参照・タグの共通化・Task 1 からの継続的な品質向上を実現。検証チェックリストの強化と Egress ルールの細粒度設計が改善ポイント。
+- **Task 3 IaC** ★★★★☆（88点）：RDS PostgreSQL の Terraform 実装を完了。DBサブネットグループ・パラメータグループ・RDS インスタンスの3点セットを完全に実装。`publicly_accessible = false`・SG 参照・パスワード変数化（`sensitive = true`）・バックアップ設定が正確。コメントが非常に丁寧で学習姿勢が優秀。改善点：`.tfvars` のパスワード管理意識・`storage_encrypted` の追加検討。

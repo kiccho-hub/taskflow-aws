@@ -289,4 +289,286 @@ terraform apply    # RDS作成に10〜15分かかる
 
 ---
 
+## 本番環境でのシークレット管理
+
+開発環境（dev）では `terraform.tfvars` でパスワードを管理していますが、本番環境では **AWS Secrets Manager** を使い、パスワードを一元管理します。このセクションでは、本番設計のベストプラクティスを学びます。
+
+### 開発環境 vs 本番環境の違い
+
+| 項目 | 開発環境（dev） | 本番環境（prod） |
+|------|----------------|-----------------|
+| パスワード生成 | 手動入力、固定値 | ランダム自動生成（Secrets Manager） |
+| パスワード保存先 | `terraform.tfvars`（gitignore） | AWS Secrets Manager |
+| 更新方法 | 手動（tfvars書き換え） | `terraform apply` で自動更新 |
+| ローテーション | なし | 定期ローテーション（手動 or 自動） |
+| 監査ログ | なし | CloudTrail で記録 |
+| アクセス制御 | Terraformを実行できる人 | IAM ロールで制限 |
+
+---
+
+### Secrets Manager の役割
+
+**AWS Secrets Manager** は、パスワード・APIキー・DB認証情報などを暗号化して一元管理するサービスです。
+
+**メリット：**
+- パスワードをコード・ファイルに書かない
+- 暗号化された状態で保存（KMS）
+- アクセス権限を IAM で制御
+- CloudTrail で全アクセスを監査
+- 定期的な自動ローテーション機能
+- RDS マスターユーザーパスワードの自動ローテーション対応
+
+---
+
+### 本番環境での実装例
+
+#### variables.tf（本番用）
+
+```hcl
+# File: infra/environments/prod/variables.tf
+
+variable "enable_secrets_manager" {
+  description = "Use AWS Secrets Manager for RDS password (true for prod)"
+  type        = bool
+  default     = false    # dev は false、prod は tfvars で true に上書き
+}
+
+variable "db_password" {
+  description = "RDS master password (only used when enable_secrets_manager=false)"
+  type        = string
+  sensitive   = true
+  default     = ""    # 本番では使わない（Secrets Manager が担当）
+}
+```
+
+#### rds.tf（本番用、Secrets Manager 統合）
+
+```hcl
+# File: infra/environments/prod/rds.tf
+
+# 1. Secrets Manager で RDS パスワードを生成・管理
+resource "aws_secretsmanager_secret" "rds_password" {
+  count                   = var.enable_secrets_manager ? 1 : 0
+  name                    = "taskflow/prod/rds/master-password"
+  description             = "RDS master user password for TaskFlow (prod)"
+  recovery_window_in_days = 7    # 削除前7日の復旧期間
+
+  tags = merge(local.common_tags, {
+    Name = "taskflow-rds-master-password"
+  })
+}
+
+# 2. ランダムなパスワードを自動生成
+resource "random_password" "db" {
+  count            = var.enable_secrets_manager ? 1 : 0
+  length           = 32
+  special          = true
+  override_special = "!&#$^<>-"    # RDS が許可する特殊文字
+  # 避ける文字: / " @ \
+}
+
+# 3. 生成したパスワードを Secrets Manager に格納
+resource "aws_secretsmanager_secret_version" "rds_password" {
+  count             = var.enable_secrets_manager ? 1 : 0
+  secret_id         = aws_secretsmanager_secret.rds_password[0].id
+  secret_string     = random_password.db[0].result
+}
+
+# 4. RDS インスタンス（パスワードは Secrets Manager から参照）
+resource "aws_db_instance" "main" {
+  identifier = "taskflow-db"
+
+  engine         = "postgres"
+  engine_version = "16.4"
+
+  instance_class        = "db.t4g.micro"
+  allocated_storage     = 20
+  max_allocated_storage = 100
+  storage_type          = "gp3"
+
+  db_name  = "taskflow"
+  username = "taskflow_admin"
+  
+  # 本番: Secrets Manager から、開発: tfvars から
+  password = var.enable_secrets_manager ? random_password.db[0].result : var.db_password
+
+  db_subnet_group_name   = aws_db_subnet_group.main.name
+  vpc_security_group_ids = [aws_security_group.rds.id]
+  publicly_accessible    = false
+
+  # 本番は Multi-AZ を有効化
+  multi_az                = var.enable_secrets_manager ? true : false
+  backup_retention_period = 7
+  backup_window           = "03:00-04:00"
+  maintenance_window      = "sun:04:00-sun:05:00"
+
+  # 本番は削除保護を有効化
+  deletion_protection = var.enable_secrets_manager ? true : false
+  skip_final_snapshot = var.enable_secrets_manager ? false : true    # 本番はスナップショット必須
+
+  parameter_group_name = aws_db_parameter_group.main.name
+
+  tags = merge(local.common_tags, {
+    Name = "taskflow-rds-postgres"
+  })
+}
+```
+
+#### prod.tfvars（本番設定）
+
+```hcl
+# File: infra/environments/prod/prod.tfvars
+
+enable_secrets_manager = true    # 本番は Secrets Manager を使用
+db_password            = ""      # 使わない（Secrets Manager が生成）
+```
+
+#### outputs.tf（本番用）
+
+```hcl
+# File: infra/environments/prod/outputs.tf
+
+output "db_endpoint" {
+  value = aws_db_instance.main.address
+}
+
+output "db_secret_arn" {
+  value       = var.enable_secrets_manager ? aws_secretsmanager_secret.rds_password[0].arn : null
+  description = "ARN of Secrets Manager secret containing RDS password"
+}
+
+output "db_secret_name" {
+  value       = var.enable_secrets_manager ? aws_secretsmanager_secret.rds_password[0].name : null
+  description = "Name of Secrets Manager secret for accessing RDS password"
+}
+```
+
+---
+
+### アプリケーションから Secrets Manager のパスワードを取得する方法
+
+#### Node.js (AWS SDK v3)
+
+```javascript
+// backend/src/db.js
+import { SecretsManagerClient, GetSecretValueCommand } from "@aws-sdk/client-secrets-manager";
+import { createPool } from "pg";
+
+const secretsClient = new SecretsManagerClient({ region: process.env.AWS_REGION });
+
+async function getDBPassword() {
+  if (process.env.NODE_ENV === 'production') {
+    // 本番: Secrets Manager から取得
+    const command = new GetSecretValueCommand({
+      SecretId: 'taskflow/prod/rds/master-password'
+    });
+    const response = await secretsClient.send(command);
+    return response.SecretString;
+  } else {
+    // 開発: 環境変数から取得
+    return process.env.DB_PASSWORD;
+  }
+}
+
+const pool = createPool({
+  host: process.env.DB_ENDPOINT,
+  port: 5432,
+  database: 'taskflow',
+  user: 'taskflow_admin',
+  password: await getDBPassword(),
+  max: 20,
+});
+
+export default pool;
+```
+
+#### Lambda 関数用 IAM ロール
+
+```hcl
+# ECS タスクロール（Secrets Manager へのアクセスを許可）
+resource "aws_iam_role_policy" "ecs_secrets_manager" {
+  count  = var.enable_secrets_manager ? 1 : 0
+  name   = "taskflow-ecs-secrets-manager"
+  role   = aws_iam_role.ecs_task_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:GetSecretValue"
+        ]
+        Resource = [
+          aws_secretsmanager_secret.rds_password[0].arn
+        ]
+      }
+    ]
+  })
+}
+```
+
+---
+
+### パスワードローテーション（自動）
+
+RDS には **自動ローテーション** 機能があり、Secrets Manager 内のパスワードを定期的に更新できます。
+
+```hcl
+# 30日ごとにパスワードをローテーション
+resource "aws_secretsmanager_secret_rotation" "rds" {
+  count               = var.enable_secrets_manager ? 1 : 0
+  secret_id           = aws_secretsmanager_secret.rds_password[0].id
+  rotation_enabled    = true
+  rotation_days       = 30
+
+  rotation_rules {
+    automatically_after_days = 30
+  }
+}
+```
+
+---
+
+### セキュリティベストプラクティス
+
+| 項目 | 推奨 | 理由 |
+|------|------|------|
+| KMS 暗号化 | 有効化 | Secrets Manager の保存時暗号化 |
+| 自動ローテーション | 30日ごと | パスワード漏洩時のリスク軽減 |
+| IAM アクセス制御 | 厳密に | ECS タスクロールのみ許可 |
+| CloudTrail ログ | 有効化 | 誰がいつパスワードを取得したか監査 |
+| 削除保護 | 有効化 | 誤削除防止 |
+| バージョン管理 | 複数バージョン保持 | ローテーション中の互換性確保 |
+
+---
+
+### 開発環境でもテストしたい場合
+
+開発環境で Secrets Manager をテストしたければ、`prod.tfvars` のように設定を上書きできます：
+
+```bash
+cd infra/environments/dev
+
+# 開発だが Secrets Manager を有効化してテスト
+terraform apply -var="enable_secrets_manager=true"
+
+# 後で戻す
+terraform apply -var="enable_secrets_manager=false"
+```
+
+---
+
+### まとめ
+
+| シーン | 何を使う | メリット |
+|--------|----------|----------|
+| ローカル開発 | 環境変数 + tfvars | シンプル、即座 |
+| CI/CD テスト | GitHub Actions Secrets | リポジトリで管理、ログなし |
+| 本番環境 | AWS Secrets Manager | 暗号化、監査、ローテーション、IAM統合 |
+
+Task 3 では開発環境で Terraform variables を使い、**Task 12 の本番化フェーズで Secrets Manager に移行する流れ** を想定しています。今後、prod 環境を構築するときは、このセクションを参考に、安全でスケーラブルなシークレット管理を実装してください。
+
+---
+
 **次のタスク:** [Task 4: ElastiCache Redis構築（IaC版）](04_elasticache.md)
