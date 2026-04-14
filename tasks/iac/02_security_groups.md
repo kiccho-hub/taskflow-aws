@@ -60,17 +60,21 @@ graph TD
 graph LR
     Internet["🌐 Internet\n0.0.0.0/0"]
     SG_ALB["aws_security_group.alb\n（taskflow-alb-sg）\nPort: 80, 443"]
-    SG_ECS["aws_security_group.ecs\n（taskflow-ecs-sg）\nPort: 0-65535"]
+    SG_FE["aws_security_group.ecs_frontend\n（taskflow-ecs-frontend-sg）\nPort: 80"]
+    SG_BE["aws_security_group.ecs_backend\n（taskflow-ecs-backend-sg）\nPort: 3000"]
     SG_RDS["aws_security_group.rds\n（taskflow-rds-sg）\nPort: 5432"]
     SG_Redis["aws_security_group.redis\n（taskflow-redis-sg）\nPort: 6379"]
 
     Internet -->|"HTTP/HTTPS\ningress"| SG_ALB
-    SG_ALB -->|"security_groups参照\ningress"| SG_ECS
-    SG_ECS -->|"security_groups参照\ningress"| SG_RDS
-    SG_ECS -->|"security_groups参照\ningress"| SG_Redis
+    SG_ALB -->|"Port 80\ningress"| SG_FE
+    SG_ALB -->|"Port 3000\ningress"| SG_BE
+    SG_BE -->|"security_groups参照\ningress"| SG_RDS
+    SG_BE -->|"security_groups参照\ningress"| SG_Redis
 
     classDef sgbox fill:#e8f4f8,stroke:#2196F3,color:#000
-    class SG_ALB,SG_ECS,SG_RDS,SG_Redis sgbox
+    classDef highlight fill:#fff59d,stroke:#f57f17,color:#000,font-weight:bold
+    class SG_ALB,SG_FE,SG_BE,SG_RDS,SG_Redis sgbox
+    class SG_FE,SG_BE highlight
 ```
 
 ---
@@ -80,7 +84,14 @@ graph LR
 
 ## このタスクのゴール
 
-4つのセキュリティグループをTerraformコードで管理する。
+5つのセキュリティグループをTerraformコードで管理する：
+- ALB SG（インターネット向け）
+- **Frontend ECS SG**（ALBから Port 80 のみ）
+- **Backend ECS SG**（ALBから Port 3000 のみ）
+- RDS SG（**Backend SG からのみ** Port 5432）
+- Redis SG（**Backend SG からのみ** Port 6379）
+
+**重要な設計：** Frontend と Backend に異なるセキュリティグループを割り当てることで、Frontend から RDS・Redis へのアクセスを完全に遮断する（最小権限の原則）。
 
 ---
 
@@ -192,24 +203,23 @@ resource "aws_security_group" "alb" {
 }
 ```
 
-### ECS 用 SG
+### Frontend ECS 用 SG
 
 ```hcl
 # File: infra/environments/dev/security_groups.tf
-resource "aws_security_group" "ecs" {
-  name        = "taskflow-ecs-sg"
-  description = "Allow traffic from ALB only"
+resource "aws_security_group" "ecs_frontend" {
+  name        = "taskflow-ecs-frontend-sg"
+  description = "Allow traffic from ALB to frontend only"
   vpc_id      = aws_vpc.main.id
 
   ingress {
-    description     = "All traffic from ALB"
-    from_port       = 0
-    to_port         = 65535
+    description     = "Port 80 from ALB"
+    from_port       = 80
+    to_port         = 80
     protocol        = "tcp"
     security_groups = [aws_security_group.alb.id]
-    # ↑ cidr_blocks ではなく security_groups で指定。
-    #   「ALB SGを持つリソース（= ALBそのもの）からの通信」を許可
-    #   IPアドレスではなくSGで制御するのがAWS流のベストプラクティス
+    # ↑ Frontend はALBからHTTP(Port 80)のみを受け付ける
+    #   RDS や Redis にアクセスしないため、ポートを限定する
   }
 
   egress {
@@ -220,7 +230,40 @@ resource "aws_security_group" "ecs" {
   }
 
   tags = merge(local.common_tags, {
-    Name = "taskflow-ecs-sg"
+    Name = "taskflow-ecs-frontend-sg"
+  })
+}
+```
+
+### Backend ECS 用 SG
+
+```hcl
+# File: infra/environments/dev/security_groups.tf
+resource "aws_security_group" "ecs_backend" {
+  name        = "taskflow-ecs-backend-sg"
+  description = "Allow traffic from ALB to backend, and outbound to RDS/Redis"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description     = "Port 3000 from ALB"
+    from_port       = 3000
+    to_port         = 3000
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb.id]
+    # ↑ Backend はALBからPort 3000のみを受け付ける（Node.js）
+    #   Frontend より特定のポートのみに限定
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+    # ↑ Backend は RDS・Redis へのアウトバウンドが必要なため、全許可
+  }
+
+  tags = merge(local.common_tags, {
+    Name = "taskflow-ecs-backend-sg"
   })
 }
 ```
@@ -231,15 +274,17 @@ resource "aws_security_group" "ecs" {
 # File: infra/environments/dev/security_groups.tf
 resource "aws_security_group" "rds" {
   name        = "taskflow-rds-sg"
-  description = "Allow PostgreSQL from ECS only"
+  description = "Allow PostgreSQL from Backend ECS only"
   vpc_id      = aws_vpc.main.id
 
   ingress {
-    description     = "PostgreSQL from ECS"
+    description     = "PostgreSQL from Backend ECS only"
     from_port       = 5432     # PostgreSQL のポート番号
     to_port         = 5432
     protocol        = "tcp"
-    security_groups = [aws_security_group.ecs.id]    # ECS SGからのみ
+    security_groups = [aws_security_group.ecs_backend.id]    # Backend SG のみ
+    # ↑ 重要：ecs_backend を参照することで、Frontend からのアクセスを完全に遮断
+    #   Frontend には RDS へのアクセス権限を与えない（ベストプラクティス）
   }
 
   egress {
@@ -261,15 +306,17 @@ resource "aws_security_group" "rds" {
 # File: infra/environments/dev/security_groups.tf
 resource "aws_security_group" "redis" {
   name        = "taskflow-redis-sg"
-  description = "Allow Redis from ECS only"
+  description = "Allow Redis from Backend ECS only"
   vpc_id      = aws_vpc.main.id
 
   ingress {
-    description     = "Redis from ECS"
+    description     = "Redis from Backend ECS only"
     from_port       = 6379     # Redis のポート番号
     to_port         = 6379
     protocol        = "tcp"
-    security_groups = [aws_security_group.ecs.id]    # ECS SGからのみ
+    security_groups = [aws_security_group.ecs_backend.id]    # Backend SG のみ
+    # ↑ 重要：ecs_backend を参照することで、Frontend からのアクセスを完全に遮断
+    #   セッションキャッシュは Backend サービスのみが管理
   }
 
   egress {
