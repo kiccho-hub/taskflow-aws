@@ -20,4 +20,19 @@ locals {
     Project     = "taskflow"
     ManagedBy   = "terraform"
   }
+
+  ecr_lifecycle_policy = jsonencode({
+    rules = [
+      {
+        rulePriority = 1
+        description  = "Keep only last 10 images"
+        action       = { type = "expire" }
+        selection    = {
+          tagStatus   = "any"
+          countType   = "imageCountMoreThan"
+          countNumber = 10
+        }
+      }
+    ]
+  })
 }

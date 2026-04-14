@@ -33,3 +33,11 @@ output "valkey_primary_endpoint" {
   value       = aws_elasticache_replication_group.main.primary_endpoint_address
   description = "Valkey クラスターのプライマリエンドポイント（読み書き用）"
 }
+
+output "ecr_backend_url" {
+  value = aws_ecr_repository.backend.repository_url
+}
+
+output "ecr_frontend_url" {
+  value = aws_ecr_repository.frontend.repository_url
+}
