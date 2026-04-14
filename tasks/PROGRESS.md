@@ -11,7 +11,7 @@
 | 4 | ElastiCache Redis | ⬜ | ★★★★☆ | ⬜ |
 | 5 | ECR コンテナレジストリ | ⬜ | ★★★★☆ | ★★★★☆ |
 | 6 | ECS クラスター + Fargate | ⬜ | ★★★★☆ | ★★★☆☆ |
-| 7 | ALB パスベースルーティング | ⬜ | ★★★★☆ | ⬜ |
+| 7 | ALB パスベースルーティング | ⬜ | ★★★★☆ | ★★★★★ |
 | 8 | ECS サービス + タスク定義 | ⬜ | ★★★★☆ | ⬜ |
 | 9 | Cognito 認証 | ⬜ | ★★★★☆ | ⬜ |
 | 10 | S3 + CloudFront | ⬜ | ★★★★☆ | ⬜ |
@@ -59,3 +59,4 @@
 - **Task 3 IaC** ★★★★☆（88点）：RDS PostgreSQL の Terraform 実装を完了。DBサブネットグループ・パラメータグループ・RDS インスタンスの3点セットを完全に実装。`publicly_accessible = false`・SG 参照・パスワード変数化（`sensitive = true`）・バックアップ設定が正確。コメントが非常に丁寧で学習姿勢が優秀。改善点：`.tfvars` のパスワード管理意識・`storage_encrypted` の追加検討。
 - **Task 5 IaC** ★★★★☆（88点）：ECR リポジトリの Terraform 実装を完了。`aws_ecr_repository` (backend・frontend) と `aws_ecr_lifecycle_policy` の4リソースを正確に定義。`locals` で `ecr_lifecycle_policy` を共通化した DRY 設計が秀逸。`IMMUTABLE + scan_on_push` でセキュリティベストプラクティスを完全に押さえ、`outputs.tf` に ECR URL も追加。改善点：ecr.tf へのコメント追加・`encryption_configuration` の明示。
 - **Task 6 IaC** ★★★☆☆（78点）：ECSクラスター + キャパシティプロバイダーのTerraform実装。Container Insights有効化・FARGATE_SPOT先読み登録・クラスター参照が正確。要修正：`name` タグが小文字（Name が正）・`base = 0` は `base = 1` が正しい・IAMロール未実装（Task 8 前に追加要）。繰り返しミス：`Name` タグ大文字確認チェックリストの習慣化が必要。
+- **Task 7 IaC** ★★★★★（97点）：ALB・パスベースルーティングの Terraform 実装を完了。`aws_lb_listener`（ポート・デフォルトアクション）と `aws_lb_listener_rule`（パス条件・Priority）の概念を完全に理解し、正確に実装。Priority 値（100 < 65535）の大小関係を完璧に押さえ、Frontend デフォルト・/api/* → Backend の設計が秀逸。ターゲットグループは target_type = "ip"・health_check 設定が充実。出力値（ALB DNS・TG ARN）も Task 8連携を見据えて適切。改善点：alb.tf へのコメント追加・ヘルスチェック matcher の判断ロジック明示。

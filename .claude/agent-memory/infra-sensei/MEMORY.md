@@ -11,3 +11,7 @@
 - [2026/04/05 Task11 CI/CD Console A評価](result_20260405_cicd_console.md) — 総合評価88/100点、得意：OIDC仕組み理解・3エラーの自力デバッグ、苦手：複数サービスまたぐ設定値の名前ズレ
 - [2026/04/07 Task12 CloudWatch監視 Console A評価](result_20260407_monitoring_console.md) — 総合評価85/100点、得意：ウィジェットタイプ選択・SNS通知設計、要注意：アラームしきい値のチューニング
 - [2026/04/07 全12タスク Consoleフェーズ修了（平均83点）](result_20260407_console_all_complete.md) — 全コンソールタスク完走、得意：デバッグ力・設計理解・UI変更適応、要改善：確認チェックリスト習慣
+- [2026/04/14 Task2 セキュリティグループ IaC A評価](result_20260414_security_groups_iac.md) — 総合評価85/100点、得意：SG間参照・タグ共通化・先読み設計、要改善：検証ドキュメント化・Egress細粒度設計
+- [2026/04/14 Task3 RDS PostgreSQL IaC A評価](result_20260414_rds_iac.md) — 総合評価88/100点、得意：3点セット完全実装・コメント品質・sensitive変数保護、要改善：.tfvars管理・storage_encrypted追加
+- [2026/04/14 Task5 ECR IaC A評価](result_20260414_ecr_iac.md) — 総合評価88/100点、得意：localsでのDRY原則・IMMUTABLE+scan_on_push・outputs先読み設計、要改善：ecr.tfコメント密度・encryption_configuration明示
+- [2026/04/14 Task6 ECSクラスター IaC B評価](result_20260414_ecs_cluster_iac.md) — 総合評価78/100点、得意：Container Insights設定・FARGATE_SPOT先読み登録、要修正：Nameタグ大文字（3回目）・base=0→1・IAMロール未実装

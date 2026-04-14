@@ -41,3 +41,14 @@ output "ecr_backend_url" {
 output "ecr_frontend_url" {
   value = aws_ecr_repository.frontend.repository_url
 }
+
+output "alb_dns_name" {
+  value = aws_lb.main.dns_name
+}
+
+output "backend_target_group_arn" {
+  value = aws_lb_target_group.backend.arn
+}
+output "frontend_target_group_arn" {
+  value = aws_lb_target_group.frontend.arn
+}

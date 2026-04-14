@@ -216,6 +216,7 @@ output "ecr_frontend_url" {
 ## 実行と動作確認
 
 ```bash
+cd infra/environments/dev
 terraform apply
 
 # ECRにログインしてイメージをpush
@@ -223,8 +224,19 @@ aws ecr get-login-password --region ap-northeast-1 | \
   docker login --username AWS --password-stdin \
   $(terraform output -raw ecr_backend_url | cut -d/ -f1)
 
-docker build -t $(terraform output -raw ecr_backend_url):latest ./backend
+# Backendイメージのビルド・プッシュ
+docker build \
+  -t $(terraform output -raw ecr_backend_url):latest \
+  ../../../backend
+
 docker push $(terraform output -raw ecr_backend_url):latest
+
+# Frontendイメージのビルド・プッシュ
+docker build \
+  -t $(terraform output -raw ecr_frontend_url):latest \
+  ../../../frontend
+
+docker push $(terraform output -raw ecr_frontend_url):latest
 ```
 
 ---
