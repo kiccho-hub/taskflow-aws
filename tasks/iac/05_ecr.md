@@ -247,6 +247,89 @@ docker push $(terraform output -raw ecr_frontend_url):latest
 |--------|------|------|
 | `RepositoryAlreadyExistsException` | コンソールで既に同名リポジトリが存在 | `terraform import` で取り込むか既存を削除 |
 | `denied: User is not authorized` | IAMユーザーにECR権限がない | `AmazonEC2ContainerRegistryFullAccess` を付与 |
+| `RepositoryNotEmptyException` | `terraform destroy` 時、リポジトリ内にイメージが残っている | **方法A**: `aws ecr batch-delete-image` でイメージ削除後、再度 `terraform destroy`。**方法B**: `ecr.tf` の `force_delete = true` を設定してから `terraform apply` → `destroy` |
+
+### ECR リポジトリ削除時のトラブルシューティング
+
+#### 状況: `terraform destroy` が失敗する場合
+
+```
+Error: ECR Repository (taskflow/frontend) not empty, consider using force_delete
+RepositoryNotEmptyException: The repository still contains images
+```
+
+**原因:** ECRリポジトリ内に Docker イメージが残っている
+
+**解決方法（2択）**
+
+**【方法A】AWS CLI でイメージを削除（その場で対応）**
+
+```bash
+# Backend リポジトリのイメージ削除
+aws ecr batch-delete-image \
+  --repository-name taskflow/backend \
+  --image-ids imageTag=latest \
+  --region ap-northeast-1
+
+# Frontend リポジトリのイメージ削除
+aws ecr batch-delete-image \
+  --repository-name taskflow/frontend \
+  --image-ids imageTag=latest \
+  --region ap-northeast-1
+
+# 再度 destroy を実行
+cd infra/environments/dev
+terraform destroy
+```
+
+**【方法B】Terraform で `force_delete = true` を設定（推奨・開発環境向け）**
+
+`infra/environments/dev/ecr.tf` を編集：
+
+```hcl
+resource "aws_ecr_repository" "backend" {
+  name         = "taskflow/backend"
+  force_delete = true  # ← この行を追加（イメージを強制削除）
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+
+  image_tag_mutability = "IMMUTABLE"
+
+  tags = merge(local.common_tags, {
+    Name = "taskflow-backend"
+  })
+}
+
+resource "aws_ecr_repository" "frontend" {
+  name         = "taskflow/frontend"
+  force_delete = true  # ← この行を追加
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+
+  image_tag_mutability = "IMMUTABLE"
+
+  tags = merge(local.common_tags, {
+    Name = "taskflow-frontend"
+  })
+}
+```
+
+設定後、`terraform apply` と `terraform destroy` を実行：
+
+```bash
+cd infra/environments/dev
+terraform apply
+terraform destroy
+```
+
+#### 推奨
+
+- **開発環境（頻繁に再構築）:** 方法B（`force_delete = true`）
+- **本番に近い環境（意図的に削除）:** 方法A（イメージ確認後に削除）
 
 ---
 
