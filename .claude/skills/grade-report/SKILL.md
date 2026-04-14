@@ -1,8 +1,8 @@
 ---
 name: grade-report
-description: タスク完了時に習熟度を評価し、成績表をチャットに表示してファイルに保存するスキル。「完了した」「できた」「終わった」などタスク完了を示す発言があったとき自動適用。
+description: タスク完了時に習熟度を評価し、成績表をチャットに表示してファイルに保存し、自動コミットするスキル。「完了した」「できた」「終わった」などタスク完了を示す発言があったとき自動適用。
 user-invocable: false
-allowed-tools: Read, Write
+allowed-tools: Read, Write, Bash
 ---
 
 ユーザーがタスク完了を示したとき（「完了しました」「できました」「終わりました」「できた」「終わった」など）に、以下の手順で成績表を発行してください。
@@ -101,3 +101,62 @@ allowed-tools: Read, Write
 ```
 - [YYYY/MM/DD タスク名 フェーズ 評価](result_YYYYMMDD_xxx.md) — 総合評価X/100点、苦手：〇〇
 ```
+
+## Step 5: タスク完了時に自動コミット実行
+
+タスク完了を確認したら、以下の手順で自動コミットを実行してください。
+
+### 実行条件
+
+- **IaC（Terraform）フェーズの完了時のみ** 自動コミットを実行
+- Knowledge フェーズ・Console フェーズはコミット対象外
+
+### コミット手順
+
+1. **変更ファイルの確認**
+   ```bash
+   git status
+   ```
+   以下のファイルをコミット対象から除外する（agent-memory のため）：
+   - `.claude/agent-memory/` 配下のファイル
+   - `.claude/skills/` 配下のファイル
+
+2. **コミットメッセージの自動生成**
+   
+   完了したタスク情報から自動生成します。形式：
+   ```
+   feat: IaC Task X完了 - [リソース名1]・[リソース名2]実装
+   
+   【Task X: リソース名】
+   - サブリソース1の説明
+   - サブリソース2の説明
+   - 設計ポイント
+   
+   【変更内容】
+   - infra/environments/dev/[ファイル名1].tf（新規/更新）
+   - infra/environments/dev/[ファイル名2].tf（新規/更新）
+   - tasks/PROGRESS.md（進捗更新）
+   - tasks/iac/XX_xxx.md（セクション追加）
+   
+   Co-Authored-By: Claude Haiku 4.5 <noreply@anthropic.com>
+   ```
+
+3. **実行コマンド例**
+   ```bash
+   cd /Users/yuki-mac/claude-code/aws-demo
+   git add infra/environments/dev/*.tf infra/environments/dev/variables.tf infra/environments/dev/outputs.tf tasks/PROGRESS.md tasks/iac/*.md
+   git commit -m "feat: IaC Task X完了 - ..."
+   ```
+
+4. **コミット完了確認**
+   ```bash
+   git log --oneline -1
+   ```
+   最新コミットが正しく記録されたことを確認する
+
+### 自動コミット実装時の注意
+
+- `.gitignore` に含まれるファイル（`terraform.tfvars`, `.tfstate` など）は追加しない
+- agent-memory のファイルは コミット対象外（ローカルメモリなため）
+- コミットメッセージは日本語で、前のコミットスタイルと統一する
+- エラーが発生した場合は、ユーザーに報告し、手動コミットを案内する
