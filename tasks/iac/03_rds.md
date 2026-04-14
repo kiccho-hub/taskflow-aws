@@ -156,6 +156,7 @@ DBパスワードはコードにハードコードしてはならない。
 ### variables.tf
 
 ```hcl
+# File: infra/environments/dev/variables.tf
 variable "db_password" {
   description = "RDS master password"
   type        = string
@@ -181,6 +182,7 @@ db_password = "YourSecurePassword123!"
 ### DBサブネットグループ
 
 ```hcl
+# File: infra/environments/dev/rds.tf
 resource "aws_db_subnet_group" "main" {
   name = "taskflow-db-subnet"
 
@@ -200,6 +202,7 @@ resource "aws_db_subnet_group" "main" {
 ### パラメータグループ
 
 ```hcl
+# File: infra/environments/dev/rds.tf
 resource "aws_db_parameter_group" "main" {
   name   = "taskflow-pg16"
   family = "postgres16"    # エンジンバージョンと一致させる（postgres16 → 16.x）
@@ -219,6 +222,7 @@ resource "aws_db_parameter_group" "main" {
 ### RDSインスタンス
 
 ```hcl
+# File: infra/environments/dev/rds.tf
 resource "aws_db_instance" "main" {
   identifier = "taskflow-db"    # AWSコンソールやARNで使われる識別子
 
@@ -257,6 +261,7 @@ resource "aws_db_instance" "main" {
 ### outputs.tf
 
 ```hcl
+# File: infra/environments/dev/outputs.tf
 output "db_endpoint" {
   value     = aws_db_instance.main.address    # ホスト名（例: taskflow-db.xxxx.ap-northeast-1.rds.amazonaws.com）
   sensitive = false    # エンドポイントはホスト名なので秘密情報ではない（表示OK）

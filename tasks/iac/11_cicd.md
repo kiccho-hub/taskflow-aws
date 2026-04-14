@@ -162,6 +162,7 @@ sequenceDiagram
 ### GitHub OIDC プロバイダー
 
 ```hcl
+# File: infra/environments/dev/cicd.tf
 data "tls_certificate" "github" {
   url = "https://token.actions.githubusercontent.com/.well-known/openid-configuration"
 }
@@ -185,12 +186,16 @@ resource "aws_iam_openid_connect_provider" "github" {
 ### GitHub Actions用IAMロール
 
 ```hcl
+# File: infra/environments/dev/variables.tf
 variable "github_repository" {
   description = "GitHub repository in format 'owner/repo'"
   type        = string
   default     = "yourname/aws-demo"    # 実際のリポジトリ名に変更すること
 }
+```
 
+```hcl
+# File: infra/environments/dev/cicd.tf
 resource "aws_iam_role" "github_actions" {
   name = "github-actions-taskflow"
 
@@ -233,6 +238,7 @@ resource "aws_iam_role" "github_actions" {
 ### IAMポリシー（最小権限）
 
 ```hcl
+# File: infra/environments/dev/cicd.tf
 resource "aws_iam_role_policy" "github_actions" {
   name = "github-actions-taskflow-policy"
   role = aws_iam_role.github_actions.id
@@ -288,6 +294,7 @@ resource "aws_iam_role_policy" "github_actions" {
 ### outputs.tf
 
 ```hcl
+# File: infra/environments/dev/outputs.tf
 output "github_actions_role_arn" {
   value = aws_iam_role.github_actions.arn
   # このARNをGitHub Secretsに設定する（AWS_ROLE_ARN として登録）

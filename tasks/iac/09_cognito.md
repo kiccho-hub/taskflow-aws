@@ -128,6 +128,7 @@ graph LR
 ### ユーザープール
 
 ```hcl
+# File: infra/environments/dev/cognito.tf
 resource "aws_cognito_user_pool" "main" {
   name = "taskflow-users"
 
@@ -171,6 +172,7 @@ resource "aws_cognito_user_pool" "main" {
 ### アプリクライアント
 
 ```hcl
+# File: infra/environments/dev/cognito.tf
 resource "aws_cognito_user_pool_client" "web" {
   name         = "taskflow-web-client"
   user_pool_id = aws_cognito_user_pool.main.id    # 上で作ったユーザープールに紐づける
@@ -203,6 +205,7 @@ resource "aws_cognito_user_pool_client" "web" {
 > **タグについて：** `aws_cognito_user_group` リソースはAWSがタグ付けをサポートしていないため、`tags` ブロックは設定できません。
 
 ```hcl
+# File: infra/environments/dev/cognito.tf
 resource "aws_cognito_user_group" "guest" {
   user_pool_id = aws_cognito_user_pool.main.id
   name         = "Guest"
@@ -228,6 +231,7 @@ resource "aws_cognito_user_group" "admin" {
 ### outputs.tf
 
 ```hcl
+# File: infra/environments/dev/outputs.tf
 output "cognito_user_pool_id" {
   value = aws_cognito_user_pool.main.id
   # フロントエンドのAmplify/SDK設定で使う

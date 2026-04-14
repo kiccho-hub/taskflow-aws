@@ -103,6 +103,7 @@ resource "aws_ecs_cluster" "main" {
 ### ECSクラスター
 
 ```hcl
+# File: infra/environments/dev/ecs_cluster.tf
 resource "aws_ecs_cluster" "main" {
   name = "taskflow-cluster"
 
@@ -121,6 +122,7 @@ resource "aws_ecs_cluster" "main" {
 ### キャパシティプロバイダー
 
 ```hcl
+# File: infra/environments/dev/ecs_cluster.tf
 resource "aws_ecs_cluster_capacity_providers" "main" {
   cluster_name = aws_ecs_cluster.main.name    # 上で作ったクラスターを参照
 

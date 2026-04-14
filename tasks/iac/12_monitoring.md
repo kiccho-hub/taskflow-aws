@@ -134,6 +134,7 @@ graph LR
 ### variables.tf
 
 ```hcl
+# File: infra/environments/dev/variables.tf
 variable "alert_email" {
   description = "Email address for CloudWatch alerts"
   type        = string
@@ -144,6 +145,7 @@ variable "alert_email" {
 ### SNSトピック
 
 ```hcl
+# File: infra/environments/dev/monitoring.tf
 resource "aws_sns_topic" "alerts" {
   name = "taskflow-alerts"
 
@@ -164,6 +166,7 @@ resource "aws_sns_topic_subscription" "email" {
 ### ECS CPUアラーム
 
 ```hcl
+# File: infra/environments/dev/monitoring.tf
 resource "aws_cloudwatch_metric_alarm" "backend_cpu_high" {
   alarm_name          = "taskflow-backend-cpu-high"
   comparison_operator = "GreaterThanThreshold"    # threshold より大きい場合にALARM
@@ -197,6 +200,7 @@ resource "aws_cloudwatch_metric_alarm" "backend_cpu_high" {
 ### RDS ストレージアラーム
 
 ```hcl
+# File: infra/environments/dev/monitoring.tf
 resource "aws_cloudwatch_metric_alarm" "rds_storage_low" {
   alarm_name          = "taskflow-rds-storage-low"
   comparison_operator = "LessThanThreshold"    # threshold より小さい場合にALARM
@@ -221,6 +225,7 @@ resource "aws_cloudwatch_metric_alarm" "rds_storage_low" {
 ### ALB 5xxアラーム
 
 ```hcl
+# File: infra/environments/dev/monitoring.tf
 resource "aws_cloudwatch_metric_alarm" "alb_5xx_high" {
   alarm_name          = "taskflow-alb-5xx-high"
   comparison_operator = "GreaterThanThreshold"
@@ -247,6 +252,7 @@ resource "aws_cloudwatch_metric_alarm" "alb_5xx_high" {
 ### CloudWatch ダッシュボード
 
 ```hcl
+# File: infra/environments/dev/monitoring.tf
 resource "aws_cloudwatch_dashboard" "main" {
   dashboard_name = "TaskFlow-Overview"
 

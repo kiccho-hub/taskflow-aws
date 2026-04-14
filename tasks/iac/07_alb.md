@@ -134,6 +134,7 @@ graph LR
 ### ALB本体
 
 ```hcl
+# File: infra/environments/dev/alb.tf
 resource "aws_lb" "main" {
   name               = "taskflow-alb"
   internal           = false              # false = インターネット向け（パブリック）
@@ -161,6 +162,7 @@ resource "aws_lb" "main" {
 ### ターゲットグループ
 
 ```hcl
+# File: infra/environments/dev/alb.tf
 resource "aws_lb_target_group" "backend" {
   name        = "taskflow-backend-tg"
   port        = 3000          # バックエンドアプリのポート
@@ -217,6 +219,7 @@ resource "aws_lb_target_group" "frontend" {
 ### リスナーとルーティングルール
 
 ```hcl
+# File: infra/environments/dev/alb.tf
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.main.arn    # どのALBに紐づくか
   port              = 80
@@ -251,6 +254,7 @@ resource "aws_lb_listener_rule" "api" {
 ### outputs.tf
 
 ```hcl
+# File: infra/environments/dev/outputs.tf
 output "alb_dns_name" {
   value = aws_lb.main.dns_name    # ALBのドメイン名（ブラウザでアクセスする際に使う）
 }

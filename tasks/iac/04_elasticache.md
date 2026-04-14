@@ -105,6 +105,7 @@ aws_elasticache_cluster.main.cache_nodes[0].address
 ### サブネットグループ
 
 ```hcl
+# File: infra/environments/dev/elasticache.tf
 resource "aws_elasticache_subnet_group" "main" {
   name = "taskflow-redis-subnet"
 
@@ -122,6 +123,7 @@ resource "aws_elasticache_subnet_group" "main" {
 ### パラメータグループ
 
 ```hcl
+# File: infra/environments/dev/elasticache.tf
 resource "aws_elasticache_parameter_group" "main" {
   name   = "taskflow-redis7"
   family = "redis7"    # エンジンバージョン（redis7.x）と一致させる
@@ -140,6 +142,7 @@ resource "aws_elasticache_parameter_group" "main" {
 ### Redisクラスター
 
 ```hcl
+# File: infra/environments/dev/elasticache.tf
 resource "aws_elasticache_cluster" "main" {
   cluster_id = "taskflow-redis"    # AWSコンソールで表示されるクラスターID
 
@@ -169,6 +172,7 @@ resource "aws_elasticache_cluster" "main" {
 ### outputs.tf
 
 ```hcl
+# File: infra/environments/dev/outputs.tf
 output "redis_endpoint" {
   value = aws_elasticache_cluster.main.cache_nodes[0].address
   #                                                ↑

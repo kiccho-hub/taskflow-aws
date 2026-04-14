@@ -18,6 +18,6 @@ locals {
   common_tags = {
     Environment = "dev"
     Project     = "taskflow"
-    ManagedBy   = "terrafrom"
+    ManagedBy   = "terraform"
   }
 }

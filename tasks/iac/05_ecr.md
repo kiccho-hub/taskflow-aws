@@ -126,6 +126,7 @@ jsonencode({         # ← HCLのマップを渡す
 ### ECRリポジトリ
 
 ```hcl
+# File: infra/environments/dev/ecr.tf
 resource "aws_ecr_repository" "backend" {
   name = "taskflow/backend"    # リポジトリ名（スラッシュで階層化できる）
 
@@ -160,6 +161,7 @@ resource "aws_ecr_repository" "frontend" {
 ### ライフサイクルポリシー
 
 ```hcl
+# File: infra/environments/dev/ecr.tf
 resource "aws_ecr_lifecycle_policy" "backend" {
   repository = aws_ecr_repository.backend.name    # どのリポジトリに適用するか
 
@@ -198,6 +200,7 @@ resource "aws_ecr_lifecycle_policy" "frontend" {
 ### outputs.tf
 
 ```hcl
+# File: infra/environments/dev/outputs.tf
 output "ecr_backend_url" {
   value = aws_ecr_repository.backend.repository_url
   # 例: 123456789012.dkr.ecr.ap-northeast-1.amazonaws.com/taskflow/backend

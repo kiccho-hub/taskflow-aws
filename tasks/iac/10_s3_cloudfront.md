@@ -131,6 +131,7 @@ graph LR
 ### S3バケット
 
 ```hcl
+# File: infra/environments/dev/s3_cloudfront.tf
 data "aws_caller_identity" "current" {}    # 現在のAWSアカウント情報を取得
 
 resource "aws_s3_bucket" "frontend" {
@@ -159,6 +160,7 @@ resource "aws_s3_bucket_public_access_block" "frontend" {
 ### CloudFront OAC（Origin Access Control）
 
 ```hcl
+# File: infra/environments/dev/s3_cloudfront.tf
 resource "aws_cloudfront_origin_access_control" "frontend" {
   name                              = "taskflow-frontend-oac"
   description                       = "OAC for TaskFlow frontend S3"
@@ -171,6 +173,7 @@ resource "aws_cloudfront_origin_access_control" "frontend" {
 ### CloudFrontディストリビューション
 
 ```hcl
+# File: infra/environments/dev/s3_cloudfront.tf
 resource "aws_cloudfront_distribution" "frontend" {
   enabled             = true
   default_root_object = "index.html"    # ルートパス（/）へのアクセス時に返すファイル
@@ -234,6 +237,7 @@ resource "aws_cloudfront_distribution" "frontend" {
 ### S3バケットポリシー（CloudFrontからのアクセスのみ許可）
 
 ```hcl
+# File: infra/environments/dev/s3_cloudfront.tf
 resource "aws_s3_bucket_policy" "frontend" {
   bucket = aws_s3_bucket.frontend.id
 
@@ -264,6 +268,7 @@ resource "aws_s3_bucket_policy" "frontend" {
 ### outputs.tf
 
 ```hcl
+# File: infra/environments/dev/outputs.tf
 output "cloudfront_domain" {
   value = aws_cloudfront_distribution.frontend.domain_name
   # 例: d1234abcd5678.cloudfront.net

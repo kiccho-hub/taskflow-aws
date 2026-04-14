@@ -153,6 +153,7 @@ graph LR
 ### IAMロール
 
 ```hcl
+# File: infra/environments/dev/ecs_services.tf
 # タスク実行ロール: ECS基盤（サービス）が使う
 # 用途: ECRからイメージをpull、CloudWatch Logsに書き込む
 resource "aws_iam_role" "ecs_execution" {
@@ -204,6 +205,7 @@ resource "aws_iam_role" "ecs_task" {
 ### CloudWatch Logs
 
 ```hcl
+# File: infra/environments/dev/ecs_services.tf
 resource "aws_cloudwatch_log_group" "backend" {
   name              = "/ecs/taskflow-backend"    # AWSの規則: /ecs/ プレフィックス推奨
   retention_in_days = 30    # 30日後に自動削除（無制限はコストが増えるため要設定）
@@ -226,6 +228,7 @@ resource "aws_cloudwatch_log_group" "frontend" {
 ### タスク定義（Backend）
 
 ```hcl
+# File: infra/environments/dev/ecs_services.tf
 resource "aws_ecs_task_definition" "backend" {
   family                   = "taskflow-backend"    # タスク定義のファミリー名（リビジョン管理の単位）
   requires_compatibilities = ["FARGATE"]           # Fargateのみで実行
@@ -287,6 +290,7 @@ resource "aws_ecs_task_definition" "backend" {
 ### タスク定義（Frontend）
 
 ```hcl
+# File: infra/environments/dev/ecs_services.tf
 resource "aws_ecs_task_definition" "frontend" {
   family                   = "taskflow-frontend"
   requires_compatibilities = ["FARGATE"]
@@ -326,6 +330,7 @@ resource "aws_ecs_task_definition" "frontend" {
 ### ECSサービス（Backend）
 
 ```hcl
+# File: infra/environments/dev/ecs_services.tf
 resource "aws_ecs_service" "backend" {
   name            = "taskflow-backend-svc"
   cluster         = aws_ecs_cluster.main.id
@@ -369,6 +374,7 @@ resource "aws_ecs_service" "backend" {
 ### ECSサービス（Frontend）
 
 ```hcl
+# File: infra/environments/dev/ecs_services.tf
 resource "aws_ecs_service" "frontend" {
   name            = "taskflow-frontend-svc"
   cluster         = aws_ecs_cluster.main.id
