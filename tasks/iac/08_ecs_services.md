@@ -421,6 +421,264 @@ aws ecs describe-services \
 
 ---
 
+## ✅ 動作確認（Verification）
+
+このセクションで、Task 8が正常に完了したことを確認します。以下の手順を上から順に実施してください。
+
+### 確認方法
+
+#### 1. Terraform計画の確認
+
+```bash
+terraform plan
+```
+
+**期待される結果：** `Plan: 0 to add, 0 to change, 0 to destroy.`
+
+```
+Apply complete! Resources: 0 added, 0 changed, 0 destroyed.
+```
+
+---
+
+#### 2. ECSサービスの一覧確認
+
+```bash
+aws ecs list-services \
+  --cluster taskflow-cluster \
+  --region ap-northeast-1 \
+  --output table
+```
+
+**期待される結果：** 以下の2つのサービスが表示される
+
+```
+|                    serviceName                     |
+|--------------------------------------------------------|
+| arn:aws:ecs:ap-northeast-1:XXXX:service/taskflow-cluster/taskflow-backend-svc  |
+| arn:aws:ecs:ap-northeast-1:XXXX:service/taskflow-cluster/taskflow-frontend-svc |
+```
+
+---
+
+#### 3. サービスの実行状況確認
+
+```bash
+aws ecs describe-services \
+  --cluster taskflow-cluster \
+  --services taskflow-backend-svc taskflow-frontend-svc \
+  --region ap-northeast-1 \
+  --query 'services[*].[serviceName, desiredCount, runningCount, status]' \
+  --output table
+```
+
+**期待される結果：**
+
+```
+| serviceName              | desiredCount | runningCount | status |
+|-------------------------|--------------|--------------|--------|
+| taskflow-backend-svc    | 1            | 1            | ACTIVE |
+| taskflow-frontend-svc   | 1            | 1            | ACTIVE |
+```
+
+- `desiredCount = 1`：1タスク起動予定
+- `runningCount = 1`：1タスク実行中
+- `status = ACTIVE`：サービスが正常に機能中
+
+---
+
+#### 4. 実行中のタスク確認
+
+```bash
+# バックエンド
+aws ecs list-tasks \
+  --cluster taskflow-cluster \
+  --service-name taskflow-backend-svc \
+  --region ap-northeast-1
+
+# フロントエンド
+aws ecs list-tasks \
+  --cluster taskflow-cluster \
+  --service-name taskflow-frontend-svc \
+  --region ap-northeast-1
+```
+
+**期待される結果：** 各サービスに1つのタスクARNが返される
+
+```
+{
+    "taskArns": [
+        "arn:aws:ecs:ap-northeast-1:XXXX:task/taskflow-cluster/1a2b3c4d5e6f7g8h9i0j"
+    ]
+}
+```
+
+---
+
+#### 5. CloudWatch ログを確認
+
+```bash
+# バックエンド
+aws logs tail taskflow-backend-logs \
+  --follow \
+  --region ap-northeast-1 \
+  --max-items 10
+
+# フロントエンド
+aws logs tail taskflow-frontend-logs \
+  --follow \
+  --region ap-northeast-1 \
+  --max-items 10
+```
+
+**期待される結果：**
+- エラーメッセージがない
+- アプリケーションログが出力されている（例: Node.jsのスタートメッセージ）
+- ログが定期的に更新されている
+
+---
+
+#### 6. IAMロール確認
+
+```bash
+# ECS実行ロール
+aws iam get-role \
+  --role-name taskflow-ecs-execution-role \
+  --query 'Role.{RoleName:RoleName, Arn:Arn, CreateDate:CreateDate}' \
+  --output table
+
+# ECSタスクロール
+aws iam get-role \
+  --role-name taskflow-ecs-task-role \
+  --query 'Role.{RoleName:RoleName, Arn:Arn, CreateDate:CreateDate}' \
+  --output table
+```
+
+**期待される結果：** 各ロールの情報が表示される
+
+```
+| RoleName                 | Arn                                               | CreateDate           |
+|--------------------------|---------------------------------------------------|----------------------|
+| taskflow-ecs-execution-role | arn:aws:iam::XXXX:role/taskflow-ecs-execution-role | 2024-XX-XX HH:MM:SS |
+```
+
+---
+
+#### 7. ALBターゲット登録確認
+
+```bash
+# バックエンドターゲットグループ
+BACKEND_TG_ARN=$(aws elbv2 describe-target-groups \
+  --names taskflow-backend-tg \
+  --region ap-northeast-1 \
+  --query 'TargetGroups[0].TargetGroupArn' \
+  --output text)
+
+aws elbv2 describe-target-health \
+  --target-group-arn $BACKEND_TG_ARN \
+  --region ap-northeast-1 \
+  --query 'TargetHealthDescriptions[*].[Target.Id, TargetHealth.State, TargetHealth.Description]' \
+  --output table
+```
+
+**期待される結果：** ターゲットが `healthy` 状態
+
+```
+| Target.Id                              | State   | Description           |
+|----------------------------------------|---------|----------------------|
+| eni-XXXX:3000                         | healthy | Health checks passed |
+```
+
+---
+
+#### 8. タスク定義確認
+
+```bash
+# バックエンド
+aws ecs describe-task-definition \
+  --task-definition taskflow-backend \
+  --region ap-northeast-1 \
+  --query 'taskDefinition.{family:family, revision:revision, status:status, containerImage:containerDefinitions[0].image}' \
+  --output table
+
+# フロントエンド
+aws ecs describe-task-definition \
+  --task-definition taskflow-frontend \
+  --region ap-northeast-1 \
+  --query 'taskDefinition.{family:family, revision:revision, status:status, containerImage:containerDefinitions[0].image}' \
+  --output table
+```
+
+**期待される結果：** タスク定義が表示され、`status: ACTIVE`
+
+```
+| family              | revision | status | containerImage                                             |
+|---------------------|----------|--------|--------------------------------------------------------|
+| taskflow-backend    | 1        | ACTIVE | XXXX.dkr.ecr.ap-northeast-1.amazonaws.com/taskflow/backend:latest |
+```
+
+---
+
+#### 9. 環境変数確認
+
+```bash
+# バックエンドのタスク定義から環境変数を確認
+aws ecs describe-task-definition \
+  --task-definition taskflow-backend \
+  --region ap-northeast-1 \
+  --query 'taskDefinition.containerDefinitions[0].environment[]' \
+  --output table
+```
+
+**期待される結果：** DBホスト、ポート、Redisホストなどが設定されている
+
+```
+| name     | value                                                  |
+|----------|--------------------------------------------------------|
+| NODE_ENV | production                                             |
+| DB_HOST  | taskflow-main.XXXX.ap-northeast-1.rds.amazonaws.com |
+| DB_PORT  | 5432                                                   |
+| REDIS_HOST | taskflow-main.XXXX.cache.amazonaws.com               |
+```
+
+---
+
+#### 10. 実機テスト（オプション）
+
+```bash
+# ALBのDNS名を取得
+ALB_DNS=$(aws elbv2 describe-load-balancers \
+  --region ap-northeast-1 \
+  --query 'LoadBalancers[?LoadBalancerName==`taskflow-alb`].DNSName' \
+  --output text)
+
+echo "ALB DNS: $ALB_DNS"
+
+# バックエンド ヘルスチェック
+curl -v "http://$ALB_DNS/api/health"
+
+# フロントエンド
+curl -v "http://$ALB_DNS"
+```
+
+**期待される結果：**
+- バックエンド: `200 OK` + JSON レスポンス
+- フロントエンド: `200 OK` + HTML（Reactが返す）
+
+---
+
+### トラブルシューティング
+
+| 問題 | 原因 | 対処 |
+|------|------|------|
+| サービスが `ACTIVE` だが `runningCount=0` | タスク起動失敗 | `aws logs tail taskflow-backend-logs --follow` でログを確認 |
+| ALBターゲットが `unhealthy` | ヘルスチェック失敗 | セキュリティグループでポート3000/80許可を確認 |
+| ECRからイメージpull失敗 | ECRリポジトリが存在しない | Task 5（ECR）が完了しているか確認 |
+| 環境変数エラー | DB/Redis接続失敗 | Task 3（RDS）・Task 4（ElastiCache）が完了しているか確認 |
+| タスクが `STOPPED` | アプリケーションエラー | CloudWatch Logs でアプリケーションエラーを確認 |
+
+---
+
 ## よくあるエラー
 
 | エラー | 原因 | 対処 |

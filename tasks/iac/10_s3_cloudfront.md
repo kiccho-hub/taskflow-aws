@@ -304,6 +304,295 @@ aws cloudfront create-invalidation \
 
 ---
 
+## ✅ 動作確認（Verification）
+
+このセクションで、Task 10が正常に完了したことを確認します。
+
+### 確認方法
+
+#### 1. Terraform計画の確認
+
+```bash
+terraform plan
+```
+
+**期待される結果：** `Plan: 0 to add, 0 to change, 0 to destroy.`
+
+---
+
+#### 2. S3バケット確認
+
+```bash
+BUCKET_NAME=$(terraform output -raw frontend_bucket_name)
+
+aws s3api list-buckets \
+  --query "Buckets[?Name=='$BUCKET_NAME']" \
+  --output table
+```
+
+**期待される結果：** `taskflow-frontend-XXXX` というバケットが表示される
+
+```
+| Name                        | CreationDate         |
+|-----------------------------|----------------------|
+| taskflow-frontend-123456789 | 2024-XX-XX HH:MM:SS  |
+```
+
+---
+
+#### 3. バケット内のオブジェクト確認
+
+```bash
+aws s3 ls s3://$BUCKET_NAME/ --recursive
+```
+
+**期待される結果：** フロントエンドファイルがアップロードされている（`index.html`、`*.js`、`*.css` など）
+
+```
+2024-04-15 12:00:00       5000 index.html
+2024-04-15 12:00:00      45000 static/js/main.XXXXX.js
+2024-04-15 12:00:00      10000 static/css/index.XXXXX.css
+```
+
+---
+
+#### 4. パブリックアクセスブロック確認
+
+```bash
+aws s3api get-public-access-block \
+  --bucket $BUCKET_NAME \
+  --output table
+```
+
+**期待される結果：** すべてのパブリックアクセスがブロックされている
+
+```
+| BlockPublicAcls | BlockPublicPolicy | IgnorePublicAcls | RestrictPublicBuckets |
+|-----------------|-------------------|------------------|----------------------|
+| True            | True              | True             | True                 |
+```
+
+---
+
+#### 5. CloudFront ディストリビューション確認
+
+```bash
+CF_DOMAIN=$(terraform output -raw cloudfront_domain)
+
+aws cloudfront get-distribution-config \
+  --id $(terraform output -raw cloudfront_distribution_id) \
+  --region ap-northeast-1 \
+  --query 'DistributionConfig.{Enabled:Enabled, PriceClass:PriceClass, DefaultRootObject:DefaultRootObject, OriginCount:Origins | length(@)}' \
+  --output table
+```
+
+**期待される結果：** ディストリビューションが有効
+
+```
+| Enabled | PriceClass   | DefaultRootObject | OriginCount |
+|---------|--------------|-------------------|-------------|
+| True    | PriceClass_200 | index.html       | 1           |
+```
+
+---
+
+#### 6. CloudFront OAC（Origin Access Control）確認
+
+```bash
+CF_ID=$(terraform output -raw cloudfront_distribution_id)
+
+aws cloudfront get-distribution \
+  --id $CF_ID \
+  --region ap-northeast-1 \
+  --query 'Distribution.DistributionConfig.Origins[0].{DomainName:DomainName, OriginAccessControlId:OriginAccessControlId}' \
+  --output table
+```
+
+**期待される結果：** S3のドメイン名とOACが設定されている
+
+```
+| DomainName                                    | OriginAccessControlId |
+|-----------------------------------------------|----------------------|
+| taskflow-frontend-123456789.s3.ap-northeast-1.amazonaws.com | E123ABCD... |
+```
+
+---
+
+#### 7. CloudFront キャッシュ設定確認
+
+```bash
+aws cloudfront get-distribution \
+  --id $CF_ID \
+  --region ap-northeast-1 \
+  --query 'Distribution.DistributionConfig.DefaultCacheBehavior.{CachePolicyId:CachePolicyId, ViewerProtocolPolicy:ViewerProtocolPolicy}' \
+  --output table
+```
+
+**期待される結果：** HTTPS リダイレクトとキャッシュポリシーが設定
+
+```
+| CachePolicyId                        | ViewerProtocolPolicy |
+|--------------------------------------|----------------------|
+| 658327ea-f89d-4fab-a63d-7e88639e58f6 | redirect-to-https    |
+```
+
+---
+
+#### 8. CloudFront カスタムエラーレスポンス確認
+
+```bash
+aws cloudfront get-distribution \
+  --id $CF_ID \
+  --region ap-northeast-1 \
+  --query 'Distribution.DistributionConfig.CustomErrorResponses[*].[ErrorCode, ResponseCode, ResponsePagePath]' \
+  --output table
+```
+
+**期待される結果：** 403 と 404 が `index.html` にリダイレクト（SPA対応）
+
+```
+| ErrorCode | ResponseCode | ResponsePagePath |
+|-----------|--------------|------------------|
+| 403       | 200          | /index.html      |
+| 404       | 200          | /index.html      |
+```
+
+---
+
+#### 9. S3 バケットポリシー確認
+
+```bash
+aws s3api get-bucket-policy \
+  --bucket $BUCKET_NAME \
+  --output text | jq .
+
+# または簡潔版
+aws s3api get-bucket-policy \
+  --bucket $BUCKET_NAME \
+  --query 'Policy' --output text | jq .
+```
+
+**期待される結果：** CloudFront からのみ `s3:GetObject` を許可するポリシー
+
+```json
+{
+  "Effect": "Allow",
+  "Principal": { "Service": "cloudfront.amazonaws.com" },
+  "Action": "s3:GetObject",
+  "Resource": "arn:aws:s3:::taskflow-frontend-123456789/*",
+  "Condition": {
+    "StringEquals": {
+      "AWS:SourceArn": "arn:aws:cloudfront::123456789012:distribution/E123ABCD..."
+    }
+  }
+}
+```
+
+---
+
+#### 10. CloudFront DNS を使ってアクセス確認
+
+```bash
+CF_DOMAIN=$(terraform output -raw cloudfront_domain)
+
+echo "CloudFront Domain: $CF_DOMAIN"
+
+# HTTPSでアクセス（CloudFrontは自動的にHTTPをHTTPSにリダイレクト）
+curl -I "https://$CF_DOMAIN"
+
+# ステータスコード 200 が返ることを確認
+curl -s "https://$CF_DOMAIN" | head -20
+```
+
+**期待される結果：**
+- HTTP Status: `200 OK`
+- Content-Type: `text/html` または `application/json`
+- React HTMLが返される
+
+```
+HTTP/2 200
+content-type: text/html; charset=utf-8
+cache-control: public, max-age=31536000
+...
+```
+
+---
+
+#### 11. ブラウザでアクセス確認（オプション）
+
+```bash
+CF_DOMAIN=$(terraform output -raw cloudfront_domain)
+
+echo "Open this URL in your browser:"
+echo "https://$CF_DOMAIN"
+```
+
+**期待される結果：**
+- ブラウザで React UI が表示される
+- 自動リダイレクト（HTTP → HTTPS）が機能している
+- スタイルシート・JavaScriptが正常に読み込まれている
+
+---
+
+#### 12. キャッシュ無効化テスト（オプション）
+
+```bash
+CF_ID=$(terraform output -raw cloudfront_distribution_id)
+
+# キャッシュ無効化を実行
+aws cloudfront create-invalidation \
+  --distribution-id $CF_ID \
+  --paths "/*" \
+  --region ap-northeast-1 \
+  --output table
+
+# 無効化ステータス確認
+aws cloudfront list-invalidations \
+  --distribution-id $CF_ID \
+  --query 'InvalidationList.Items[0].[Id, Status, CreateTime]' \
+  --output table
+```
+
+**期待される結果：** 無効化リクエストが完了状態（`Completed`）
+
+```
+| Id          | Status    | CreateTime       |
+|-------------|-----------|------------------|
+| I1A2B3C4D5E | Completed | 2024-04-15 12:00 |
+```
+
+---
+
+#### 13. CloudFront ディストリビューション状態確認
+
+```bash
+aws cloudfront get-distribution \
+  --id $CF_ID \
+  --region ap-northeast-1 \
+  --query 'Distribution.Status' \
+  --output text
+```
+
+**期待される結果：** `Deployed`
+
+```
+Deployed
+```
+
+---
+
+### トラブルシューティング
+
+| 問題 | 原因 | 対処 |
+|------|------|------|
+| S3からアクセス拒否（403） | バケットポリシーが間違っている | ポリシーの `SourceArn` がCloudFrontのARNと一致しているか確認 |
+| CloudFrontが `InProgress` | ディストリビューション作成中 | 10〜15分待機 |
+| SPA ルーティングが機能しない（404エラー） | カスタムエラーレスポンス未設定 | 403・404を `/index.html` にリダイレクト |
+| ブラウザでHTMLが表示されない | キャッシュが古い | `aws cloudfront create-invalidation` でキャッシュ無効化 |
+| バケット内にファイルがない | アップロード実施なし | `aws s3 sync build/ s3://$BUCKET_NAME/ --delete` を実行 |
+
+---
+
 ## よくあるエラー
 
 | エラー | 原因 | 対処 |

@@ -317,6 +317,261 @@ terraform output github_actions_role_arn
 
 ---
 
+## ✅ 動作確認（Verification）
+
+このセクションで、Task 11が正常に完了したことを確認します。
+
+### 確認方法
+
+#### 1. Terraform計画の確認
+
+```bash
+terraform plan
+```
+
+**期待される結果：** `Plan: 0 to add, 0 to change, 0 to destroy.`
+
+---
+
+#### 2. IAM OIDC プロバイダー確認
+
+```bash
+aws iam list-open-id-connect-providers \
+  --region ap-northeast-1 \
+  --output table
+```
+
+**期待される結果：** GitHub の OIDC プロバイダーが表示される
+
+```
+| OpenIDConnectProviderArn                                    |
+|-------------------------------------------------------------|
+| arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com |
+```
+
+---
+
+#### 3. GitHub OIDC プロバイダー詳細確認
+
+```bash
+OIDC_ARN=$(aws iam list-open-id-connect-providers \
+  --query 'OpenIDConnectProviderList[?String.token.actions.githubusercontent.com]' \
+  --output text)
+
+aws iam get-open-id-connect-provider \
+  --open-id-connect-provider-arn $(aws iam list-open-id-connect-providers --query 'OpenIDConnectProviderList[0]' --output text) \
+  --output table
+```
+
+**期待される結果：** GitHub のクライアント ID と証明書フィンガープリントが設定
+
+```
+| ClientIDList | ThumbprintList      |
+|--------------|---------------------|
+| sts.amazonaws.com | abc123def456... |
+```
+
+---
+
+#### 4. IAM ロール確認
+
+```bash
+aws iam get-role \
+  --role-name github-actions-taskflow \
+  --query 'Role.{RoleName:RoleName, Arn:Arn, CreateDate:CreateDate}' \
+  --output table
+```
+
+**期待される結果：** `github-actions-taskflow` ロールが表示される
+
+```
+| RoleName               | Arn                                              | CreateDate           |
+|------------------------|--------------------------------------------------|----------------------|
+| github-actions-taskflow | arn:aws:iam::123456789012:role/github-actions-taskflow | 2024-XX-XX HH:MM:SS |
+```
+
+---
+
+#### 5. ロールの信頼ポリシー確認
+
+```bash
+aws iam get-role \
+  --role-name github-actions-taskflow \
+  --region ap-northeast-1 \
+  --query 'Role.AssumeRolePolicyDocument' \
+  --output text | jq .
+```
+
+**期待される結果：** 信頼ポリシーに GitHub OIDC プロバイダーが含まれている
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Federated": "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
+      },
+      "Action": "sts:AssumeRoleWithWebIdentity",
+      "Condition": {
+        "StringEquals": {
+          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
+        },
+        "StringLike": {
+          "token.actions.githubusercontent.com:sub": "repo:yourname/aws-demo:ref:refs/heads/main"
+        }
+      }
+    }
+  ]
+}
+```
+
+---
+
+#### 6. IAM ポリシー確認
+
+```bash
+aws iam get-role-policy \
+  --role-name github-actions-taskflow \
+  --policy-name github-actions-taskflow-policy \
+  --region ap-northeast-1 \
+  --query 'RolePolicyDocument.Statement[*].[Effect, Action, Resource]' \
+  --output table
+```
+
+**期待される結果：** ECS、ECR、S3、CloudFront への権限が設定
+
+```
+| Effect | Action                      | Resource           |
+|--------|-----------------------------|--------------------|
+| Allow  | ecs:UpdateService, ecs:DescribeServices, ecs:RegisterTaskDefinition | * |
+| Allow  | ecr:GetAuthorizationToken, ecr:BatchCheckLayerAvailability, ... | * |
+| Allow  | s3:PutObject, s3:DeleteObject, s3:ListBucket | ... |
+| Allow  | cloudfront:CreateInvalidation | ... |
+```
+
+---
+
+#### 7. ロール ARN 出力
+
+```bash
+terraform output \
+  -raw github_actions_role_arn
+
+# 期待: arn:aws:iam::123456789012:role/github-actions-taskflow
+```
+
+**期待される結果：** GitHub Actions で使用するロール ARN
+
+```
+arn:aws:iam::123456789012:role/github-actions-taskflow
+```
+
+---
+
+#### 8. GitHub Secrets 設定確認（手動）
+
+```bash
+# GitHub リポジトリ設定画面で以下を確認
+# Settings → Secrets and variables → Actions
+
+# 必要な環境変数:
+# - AWS_ROLE_ARN: terraform output で取得したロール ARN
+# - AWS_REGION: ap-northeast-1
+```
+
+**期待される結果：** Secrets に AWS_ROLE_ARN が登録されている
+
+---
+
+#### 9. GitHub Actions ワークフロー確認（手動）
+
+```bash
+# .github/workflows/*.yml ファイルで以下を確認
+# - permissions: id-token: write （OIDC トークン取得権限）
+# - uses: aws-actions/configure-aws-credentials@v4
+#   with:
+#     role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+```
+
+---
+
+#### 10. ワークフロー実行テスト（オプション）
+
+```bash
+# GitHub Actions で以下のコマンドを実行
+aws sts assume-role-with-web-identity \
+  --role-arn $(terraform output -raw github_actions_role_arn) \
+  --role-session-name test-session \
+  --web-identity-token $GITHUB_TOKEN \
+  --duration-seconds 3600
+```
+
+**期待される結果：** 一時的な AWS 認証情報が返される
+
+```json
+{
+  "Credentials": {
+    "AccessKeyId": "ASIA...",
+    "SecretAccessKey": "...",
+    "SessionToken": "...",
+    "Expiration": "2024-04-15T13:30:00Z"
+  }
+}
+```
+
+---
+
+#### 11. デプロイパイプライン確認（手動）
+
+```bash
+# GitHub リポジトリの Actions タブで:
+# 1. ワークフロー実行履歴を確認
+# 2. 最新実行の詳細を確認
+# 3. ECR へのイメージ push ステップが成功しているか確認
+# 4. ECS へのデプロイステップが成功しているか確認
+```
+
+**期待される結果：** ワークフロー全ステップが緑色（✅成功）
+
+```
+✅ Checkout
+✅ Configure AWS credentials
+✅ Login to Amazon ECR
+✅ Build backend image
+✅ Push to ECR
+✅ Update ECS service
+✅ Invalidate CloudFront cache
+```
+
+---
+
+#### 12. IAM Policy Simulator で権限確認
+
+```bash
+aws accessanalyzer validate-policy \
+  --policy-document file:///path/to/policy.json \
+  --policy-type IDENTITY_POLICY \
+  --region ap-northeast-1
+```
+
+**期待される結果：** ポリシーが有効（エラーが出ない）
+
+---
+
+### トラブルシューティング
+
+| 問題 | 原因 | 対処 |
+|------|------|------|
+| `tls provider not found` | TLS プロバイダー未設定 | `main.tf` の `required_providers` に `tls` を追加して `terraform init` |
+| GitHub Actions が OIDC トークン取得に失敗 | 信頼ポリシーが間違っている | `github_repository` 変数の値を確認（形式: `owner/repo`） |
+| IAM ロール assume に失敗 | 信頼ポリシーの条件が厳しすぎる | `token.actions.githubusercontent.com:sub` を確認（`refs/heads/*` で全ブランチ許可など） |
+| ECR への push 権限がない | IAM ポリシーに `ecr:PutImage` がない | `cicd.tf` の IAM ポリシーを確認 |
+| CloudFront キャッシュ無効化に失敗 | IAM ポリシーに権限がない | `cloudfront:CreateInvalidation` 権限を追加 |
+
+---
+
 ## よくあるエラー
 
 | エラー | 原因 | 対処 |

@@ -318,6 +318,344 @@ terraform apply
 
 ---
 
+## ✅ 動作確認（Verification）
+
+このセクションで、Task 12が正常に完了したことを確認します。
+
+### 確認方法
+
+#### 1. Terraform計画の確認
+
+```bash
+terraform plan
+```
+
+**期待される結果：** `Plan: 0 to add, 0 to change, 0 to destroy.`
+
+---
+
+#### 2. SNS トピック確認
+
+```bash
+aws sns list-topics \
+  --region ap-northeast-1 \
+  --query 'Topics[?contains(TopicArn, `taskflow-alerts`)]' \
+  --output table
+```
+
+**期待される結果：** `taskflow-alerts` トピックが表示される
+
+```
+| TopicArn                                              |
+|-------------------------------------------------------|
+| arn:aws:sns:ap-northeast-1:123456789012:taskflow-alerts |
+```
+
+---
+
+#### 3. SNS サブスクリプション確認
+
+```bash
+TOPIC_ARN=$(aws sns list-topics \
+  --region ap-northeast-1 \
+  --query 'Topics[?contains(TopicArn, `taskflow-alerts`)].TopicArn' \
+  --output text)
+
+aws sns list-subscriptions-by-topic \
+  --topic-arn $TOPIC_ARN \
+  --region ap-northeast-1 \
+  --query 'Subscriptions[*].[Protocol, Endpoint, SubscriptionArn]' \
+  --output table
+```
+
+**期待される結果：** メール登録状況（未確認または確認済み）
+
+```
+| Protocol | Endpoint              | SubscriptionArn                          | SubscriptionStatus |
+|----------|----------------------|------------------------------------------|-------------------|
+| email    | your.email@example.com | arn:aws:sns:ap-northeast-1:...:taskflow-alerts:... | PendingConfirmation |
+```
+
+**重要：** `PendingConfirmation` の場合は、メール内の Confirm リンクをクリックして、ステータスを `Confirmed` に変更してください。
+
+---
+
+#### 4. CloudWatch アラーム一覧確認
+
+```bash
+aws cloudwatch describe-alarms \
+  --region ap-northeast-1 \
+  --query 'MetricAlarms[*].[AlarmName, StateValue, AlarmActions]' \
+  --output table
+```
+
+**期待される結果：** 3つのアラーム（CPU、RDS ストレージ、ALB 5xx）が表示される
+
+```
+| AlarmName                    | StateValue | AlarmActions                          |
+|------------------------------|------------|---------------------------------------|
+| taskflow-backend-cpu-high    | OK         | arn:aws:sns:...:taskflow-alerts       |
+| taskflow-rds-storage-low     | OK         | arn:aws:sns:...:taskflow-alerts       |
+| taskflow-alb-5xx-high        | OK         | arn:aws:sns:...:taskflow-alerts       |
+```
+
+---
+
+#### 5. ECS CPU アラーム詳細確認
+
+```bash
+aws cloudwatch describe-alarms \
+  --alarm-names taskflow-backend-cpu-high \
+  --region ap-northeast-1 \
+  --query 'MetricAlarms[0].{AlarmName:AlarmName, Statistic:Statistic, Period:Period, Threshold:Threshold, EvaluationPeriods:EvaluationPeriods, Dimensions:Dimensions}' \
+  --output table
+```
+
+**期待される結果：** CPU アラーム設定が表示される
+
+```
+| AlarmName                 | Statistic | Period | Threshold | EvaluationPeriods | Dimensions                     |
+|---------------------------|-----------|--------|-----------|-------------------|---------------------------------|
+| taskflow-backend-cpu-high | Average   | 300    | 80        | 3                 | ClusterName, ServiceName        |
+```
+
+- `Statistic: Average` - 平均値で判定
+- `Period: 300` - 5分間隔
+- `Threshold: 80` - 80% を超えたらアラーム
+- `EvaluationPeriods: 3` - 3回連続でアラーム条件を満たしたら発火
+
+---
+
+#### 6. RDS ストレージアラーム詳細確認
+
+```bash
+aws cloudwatch describe-alarms \
+  --alarm-names taskflow-rds-storage-low \
+  --region ap-northeast-1 \
+  --query 'MetricAlarms[0].{AlarmName:AlarmName, ComparisonOperator:ComparisonOperator, Statistic:Statistic, Threshold:Threshold, Dimensions:Dimensions}' \
+  --output table
+```
+
+**期待される結果：** RDS ストレージアラーム設定が表示される
+
+```
+| AlarmName              | ComparisonOperator | Statistic | Threshold  | Dimensions          |
+|------------------------|-------------------|-----------|------------|----------------------|
+| taskflow-rds-storage-low | LessThanThreshold | Minimum  | 5000000000 | DBInstanceIdentifier |
+```
+
+- `ComparisonOperator: LessThanThreshold` - 5GB以下でアラーム
+- `Statistic: Minimum` - 最小値で判定
+
+---
+
+#### 7. ALB 5xx アラーム詳細確認
+
+```bash
+aws cloudwatch describe-alarms \
+  --alarm-names taskflow-alb-5xx-high \
+  --region ap-northeast-1 \
+  --query 'MetricAlarms[0].{AlarmName:AlarmName, Statistic:Statistic, Threshold:Threshold, Dimensions:Dimensions}' \
+  --output table
+```
+
+**期待される結果：** ALB アラーム設定が表示される
+
+```
+| AlarmName            | Statistic | Threshold | Dimensions |
+|----------------------|-----------|-----------|------------|
+| taskflow-alb-5xx-high | Sum       | 10        | LoadBalancer |
+```
+
+- `Statistic: Sum` - 合計で判定
+- `Threshold: 10` - 5分間で10件以上の5xxエラーでアラーム
+
+---
+
+#### 8. CloudWatch ダッシュボード確認
+
+```bash
+aws cloudwatch list-dashboards \
+  --region ap-northeast-1 \
+  --query 'DashboardEntries[?contains(DashboardName, `TaskFlow`)]' \
+  --output table
+```
+
+**期待される結果：** `TaskFlow-Overview` ダッシュボードが表示される
+
+```
+| DashboardName    | DashboardArn                                           | LastModified         |
+|------------------|--------------------------------------------------------|----------------------|
+| TaskFlow-Overview | arn:aws:cloudwatch::123456789012:dashboard/TaskFlow-Overview | 2024-04-15T12:00:00Z |
+```
+
+---
+
+#### 9. ダッシュボード詳細確認
+
+```bash
+aws cloudwatch get-dashboard \
+  --dashboard-name TaskFlow-Overview \
+  --region ap-northeast-1 \
+  --query 'DashboardBody' \
+  --output text | jq . | head -50
+```
+
+**期待される結果：** ダッシュボード JSON が表示される（ウィジェット数など）
+
+```json
+{
+  "widgets": [
+    {
+      "type": "metric",
+      "properties": {
+        "title": "ECS Backend - CPU & Memory",
+        "metrics": [
+          ["AWS/ECS", "CPUUtilization", ...]
+        ]
+      }
+    },
+    ...
+  ]
+}
+```
+
+---
+
+#### 10. CloudWatch ダッシュボードをブラウザで確認
+
+```bash
+# AWS マネジメントコンソール → CloudWatch → Dashboards
+# "TaskFlow-Overview" をクリック
+
+# 期待される画面:
+# 1. ECS Backend - CPU & Memory グラフ
+# 2. ALB - Traffic Overview グラフ
+# 3. RDS - Database Status グラフ
+```
+
+**期待される結果：** グラフが表示される（データがなくても OK、ダッシュボード生成が成功していることが重要）
+
+---
+
+#### 11. CloudWatch ログ確認
+
+```bash
+# ECS バックエンド ログ
+aws logs describe-log-groups \
+  --region ap-northeast-1 \
+  --query 'logGroups[?contains(logGroupName, `taskflow`)]' \
+  --output table
+```
+
+**期待される結果：** ログが取得されている
+
+```
+| logGroupName         | retentionInDays | creationTime           | storedBytes |
+|----------------------|-----------------|------------------------|-------------|
+| taskflow-backend-logs | 30              | 2024-04-15T12:00:00Z   | 5000        |
+| taskflow-frontend-logs | 30             | 2024-04-15T12:00:00Z   | 3000        |
+```
+
+---
+
+#### 12. CloudWatch メトリクス確認
+
+```bash
+# ECS メトリクス
+aws cloudwatch list-metrics \
+  --namespace AWS/ECS \
+  --dimensions Name=ClusterName,Value=taskflow-cluster \
+  --region ap-northeast-1 \
+  --query 'Metrics[*].[MetricName, Dimensions]' \
+  --output table
+```
+
+**期待される結果：** CPU と Memory メトリクスが表示される
+
+```
+| MetricName        | Dimensions                                         |
+|-------------------|--------------------------------------------------|
+| CPUUtilization    | [{'Name': 'ClusterName', 'Value': 'taskflow-cluster'}, ...] |
+| MemoryUtilization | [{'Name': 'ClusterName', 'Value': 'taskflow-cluster'}, ...] |
+```
+
+---
+
+#### 13. アラーム テストトリガー（オプション）
+
+```bash
+# ※警告：実際にアラームメールが送信されます※
+# テスト目的でアラームを発火させる場合:
+
+aws cloudwatch set-alarm-state \
+  --alarm-name taskflow-backend-cpu-high \
+  --state-value ALARM \
+  --state-reason "Testing alarm notification" \
+  --region ap-northeast-1
+```
+
+**期待される結果：** 登録したメールアドレスにアラーム通知が届く
+
+```
+Subject: AWS Notification - taskflow-backend-cpu-high
+
+Alarm Details:
+- AlarmName: taskflow-backend-cpu-high
+- State: ALARM
+- Reason: Testing alarm notification
+```
+
+**テスト後は状態を戻す:**
+
+```bash
+aws cloudwatch set-alarm-state \
+  --alarm-name taskflow-backend-cpu-high \
+  --state-value OK \
+  --state-reason "Test completed" \
+  --region ap-northeast-1
+```
+
+---
+
+#### 14. メール確認リンク実施（重要）
+
+```bash
+# 初回設定時、SNS サブスクリプション確認メールが届く場合:
+# 1. メール内の Confirm subscription リンクをクリック
+# 2. 確認後、以下で確認
+```
+
+```bash
+aws sns list-subscriptions-by-topic \
+  --topic-arn $TOPIC_ARN \
+  --region ap-northeast-1 \
+  --query 'Subscriptions[?Protocol==`email`].[Endpoint, SubscriptionArn]' \
+  --output table
+```
+
+**期待される結果：** `SubscriptionArn` がない場合は「未確認」、ある場合は「確認済み」
+
+```
+| Endpoint          | SubscriptionArn                                   |
+|-------------------|--------------------------------------------------|
+| user@example.com  | arn:aws:sns:ap-northeast-1:...:...:abc123def... |
+```
+
+---
+
+### トラブルシューティング
+
+| 問題 | 原因 | 対処 |
+|------|------|------|
+| SNS サブスクリプションが `PendingConfirmation` のまま | メール確認リンク未実施 | メール内の Confirm リンクをクリック |
+| アラーム通知が来ない | SNS が未確認状態 | 上記のメール確認を実施 |
+| ダッシュボードにデータが表示されない | メトリクスのデータ不足 | 数分〜数時間待機（CloudWatch はデータ蓄積に時間がかかる） |
+| `Invalid dimension value` エラー | ALB の `arn_suffix` が間違っている | `.arn_suffix` を使用しているか確認 |
+| ログが表示されない | ログが出力されていない | アプリケーションが正常に動作しているか確認 |
+
+---
+
 ## よくあるエラー
 
 | エラー | 原因 | 対処 |

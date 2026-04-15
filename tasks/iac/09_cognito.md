@@ -253,6 +253,249 @@ terraform apply
 
 ---
 
+## ✅ 動作確認（Verification）
+
+このセクションで、Task 9が正常に完了したことを確認します。
+
+### 確認方法
+
+#### 1. Terraform計画の確認
+
+```bash
+terraform plan
+```
+
+**期待される結果：** `Plan: 0 to add, 0 to change, 0 to destroy.`
+
+---
+
+#### 2. Cognitoユーザープール確認
+
+```bash
+aws cognito-idp list-user-pools \
+  --max-results 10 \
+  --region ap-northeast-1 \
+  --query 'UserPools[?Name==`taskflow-users`]'
+```
+
+**期待される結果：** `taskflow-users` というユーザープールが表示される
+
+```json
+{
+    "UserPools": [
+        {
+            "Id": "ap-northeast-1_XXXXXXXXX",
+            "Name": "taskflow-users",
+            "LambdaConfig": {}
+        }
+    ]
+}
+```
+
+---
+
+#### 3. ユーザープール詳細確認
+
+```bash
+USER_POOL_ID=$(aws cognito-idp list-user-pools \
+  --max-results 10 \
+  --region ap-northeast-1 \
+  --query 'UserPools[?Name==`taskflow-users`].Id' \
+  --output text)
+
+aws cognito-idp describe-user-pool \
+  --user-pool-id $USER_POOL_ID \
+  --region ap-northeast-1 \
+  --query 'UserPool.{Id:Id, Name:Name, Policies:Policies, EmailConfiguration:EmailConfiguration}'
+```
+
+**期待される結果：** パスワードポリシーとメール設定が表示される
+
+```
+| Id                  | Name             | Policies.PasswordPolicy.MinimumLength | EmailConfiguration.EmailSendingAccount |
+|---------------------|------------------|----------------------------------------|----------------------------------------|
+| ap-northeast-1_XXXX | taskflow-users   | 8                                      | COGNITO_DEFAULT                        |
+```
+
+---
+
+#### 4. アプリクライアント確認
+
+```bash
+aws cognito-idp list-user-pool-clients \
+  --user-pool-id $USER_POOL_ID \
+  --region ap-northeast-1 \
+  --query 'UserPoolClients[?ClientName==`taskflow-web-client`]'
+```
+
+**期待される結果：** `taskflow-web-client` というクライアントが表示される
+
+```json
+{
+    "UserPoolClients": [
+        {
+            "ClientId": "abcdefghijklmnopqrstuvwxyz",
+            "ClientName": "taskflow-web-client",
+            "UserPoolId": "ap-northeast-1_XXXXXXXXX"
+        }
+    ]
+}
+```
+
+---
+
+#### 5. アプリクライアント詳細確認
+
+```bash
+CLIENT_ID=$(aws cognito-idp list-user-pool-clients \
+  --user-pool-id $USER_POOL_ID \
+  --region ap-northeast-1 \
+  --query 'UserPoolClients[?ClientName==`taskflow-web-client`].ClientId' \
+  --output text)
+
+aws cognito-idp describe-user-pool-client \
+  --user-pool-id $USER_POOL_ID \
+  --client-id $CLIENT_ID \
+  --region ap-northeast-1 \
+  --query 'UserPoolClient.{ClientId:ClientId, ClientName:ClientName, AllowedOAuthFlows:AllowedOAuthFlows, ExplicitAuthFlows:ExplicitAuthFlows}' \
+  --output table
+```
+
+**期待される結果：** 認証フロー（SRP、リフレッシュトークンなど）が設定されている
+
+```
+| ClientId | ClientName        | ExplicitAuthFlows                    |
+|----------|-------------------|--------------------------------------|
+| abc123   | taskflow-web-client | ['ALLOW_USER_SRP_AUTH', 'ALLOW_REFRESH_TOKEN_AUTH'] |
+```
+
+---
+
+#### 6. ユーザーグループ確認
+
+```bash
+aws cognito-idp list-groups \
+  --user-pool-id $USER_POOL_ID \
+  --region ap-northeast-1 \
+  --query 'Groups[*].[GroupName, Description, Precedence]' \
+  --output table
+```
+
+**期待される結果：** 3つのグループ（Guest、User、Admin）が表示される
+
+```
+| GroupName | Description              | Precedence |
+|-----------|--------------------------|------------|
+| Guest     | Read-only access         | 3          |
+| User      | Standard user access     | 2          |
+| Admin     | Full administrative access | 1        |
+```
+
+---
+
+#### 7. 出力値の確認
+
+```bash
+terraform output \
+  -raw cognito_user_pool_id
+# 期待: ap-northeast-1_XXXXXXXXX
+
+terraform output \
+  -raw cognito_client_id
+# 期待: abc123xyz...
+```
+
+**期待される結果：** ユーザープールIDとクライアントIDが表示される
+
+---
+
+#### 8. パスワードポリシー確認
+
+```bash
+aws cognito-idp describe-user-pool \
+  --user-pool-id $USER_POOL_ID \
+  --region ap-northeast-1 \
+  --query 'UserPool.Policies.PasswordPolicy' \
+  --output table
+```
+
+**期待される結果：** 最小8文字、大文字・小文字・数字・記号を要求
+
+```
+| MinimumLength | RequireUppercase | RequireLowercase | RequireNumbers | RequireSymbols |
+|---------------|------------------|------------------|----------------|----------------|
+| 8             | True             | True             | True           | True           |
+```
+
+---
+
+#### 9. テストユーザー作成（オプション）
+
+```bash
+aws cognito-idp admin-create-user \
+  --user-pool-id $USER_POOL_ID \
+  --username test-user@example.com \
+  --message-action SUPPRESS \
+  --temporary-password TempPassword123! \
+  --region ap-northeast-1
+
+# 確認
+aws cognito-idp list-users \
+  --user-pool-id $USER_POOL_ID \
+  --region ap-northeast-1 \
+  --query 'Users[*].[Username, UserStatus, Attributes[?Name==`email`].Value[0]]' \
+  --output table
+```
+
+**期待される結果：** テストユーザーが作成される
+
+```
+| Username               | UserStatus | email                |
+|------------------------|------------|----------------------|
+| test-user@example.com  | FORCE_CHANGE_PASSWORD | test-user@example.com |
+```
+
+---
+
+#### 10. テストユーザーをグループに追加（オプション）
+
+```bash
+aws cognito-idp admin-add-user-to-group \
+  --user-pool-id $USER_POOL_ID \
+  --username test-user@example.com \
+  --group-name User \
+  --region ap-northeast-1
+
+# 確認
+aws cognito-idp admin-list-groups-for-user \
+  --user-pool-id $USER_POOL_ID \
+  --username test-user@example.com \
+  --region ap-northeast-1 \
+  --query 'Groups[*].[GroupName, Description]' \
+  --output table
+```
+
+**期待される結果：** ユーザーが `User` グループに属する
+
+```
+| GroupName | Description           |
+|-----------|------------------------|
+| User      | Standard user access   |
+```
+
+---
+
+### トラブルシューティング
+
+| 問題 | 原因 | 対処 |
+|------|------|------|
+| ユーザープール作成後、`username_attributes` が変更できない | Cognitoの仕様 | プールを削除して再作成する必要がある |
+| アプリクライアントが見つからない | クライアント未作成 | `terraform apply` を再実行 |
+| グループが表示されない | グループ作成失敗 | CloudWatch Logs でエラーを確認 |
+| テストユーザーのメール確認ができない | `COGNITO_DEFAULT` の送信制限 | `test@example.com` ではなく実メールアドレスを使用 |
+
+---
+
 ## よくあるエラー
 
 | エラー | 原因 | 対処 |
