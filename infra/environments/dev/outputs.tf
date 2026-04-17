@@ -17,7 +17,7 @@ output "private_subnet_ids" {
 }
 
 output "db_endpoint" {
-  value = aws_db_instance.main.endpoint
+  value     = aws_db_instance.main.endpoint
   sensitive = false
 }
 
@@ -51,4 +51,26 @@ output "backend_target_group_arn" {
 }
 output "frontend_target_group_arn" {
   value = aws_lb_target_group.frontend.arn
+}
+
+output "cognito_user_pool_id" {
+  value = aws_cognito_user_pool.main.id
+  # フロントエンドのAmplify/SDK設定で使う
+}
+
+output "cognito_client_id" {
+  value = aws_cognito_user_pool_client.web.id
+  # フロントエンドのAmplify/SDK設定で使う
+}
+
+output "frontend_bucket_name" {
+  value = aws_s3_bucket.frontend.id
+}
+
+output "cloudfront_distribution_id" {
+  value = aws_cloudfront_distribution.frontend.id
+}
+
+output "cloudfront_domain" {
+  value = aws_cloudfront_distribution.frontend.domain_name
 }
