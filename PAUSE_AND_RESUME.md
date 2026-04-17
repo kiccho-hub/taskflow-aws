@@ -1,208 +1,168 @@
-# 学習一時停止・再開ガイド
+# PAUSE_AND_RESUME.md - 簡潔版
 
-AWSは**作成しただけで課金が始まるリソース**があります。学習を中断するときは必ずこのガイドに従ってリソースを削除し、再開時に復旧してください。
-
----
-
-## 課金されるリソース一覧
-
-| リソース | 課金タイミング | 目安コスト |
-|---------|-------------|-----------|
-| NAT Gateway | 存在しているだけで課金 | 約 $0.045/時間（約 $33/月） |
-| Elastic IP | NAT Gatewayに紐づかず未使用の場合 | 約 $0.005/時間 |
-| RDS インスタンス | 起動中は常に課金 | インスタンスタイプによる |
-| ElastiCache | 起動中は常に課金 | インスタンスタイプによる |
-| ECS Fargate | タスク起動中のみ課金 | vCPU/メモリ量による |
-| ALB | 存在しているだけで課金 | 約 $0.025/時間（約 $18/月） |
-| CloudFront | リクエスト数・転送量による | 無料枠あり |
-| EC2 NAT Instance | 起動中は常に課金 | インスタンスタイプによる |
-
-> **VPC・サブネット・セキュリティグループ・IGW・ルートテーブル・ECR** は、リソース自体の保有は無料です（通信量・ストレージは別途）。
+毎日リソースを削除してコストを削減し、翌日スクラッチから再構築する手順。
 
 ---
 
-## 一時停止手順（学習を終えるとき）
+## 朝：Terraform 削除・再構築
 
-進捗に応じて、**作成済みのリソースだけ削除**してください。
-
-### Step 1: ECS サービスを停止（Task 08 以降で作成した場合）
-
-```
-ECSコンソール → クラスター「taskflow-cluster」
-→ サービスを選択 → 「更新」→ 必要なタスク数を「0」に変更
+```bash
+cd /Users/yuki-mac/claude-code/aws-demo/infra/environments/dev
 ```
 
-> タスク数を0にするとFargateの課金が止まります。サービス自体は残しておいてOKです。
-
-### Step 2: RDS を停止（Task 03 以降で作成した場合）
-
-```
-RDSコンソール → データベース → 「taskflow-db」を選択
-→ 「アクション」→「停止」→ 一時停止期間を選択（最大7日）
+```bash
+terraform destroy -auto-approve
 ```
 
-> 注意: RDSの停止は最大7日間のみ。7日後に自動で再起動されます。
-> 長期間停止する場合はスナップショットを取ってから削除してください。
-
-### Step 3: ElastiCache を停止（Task 04 以降で作成した場合）
-
-ElastiCacheには「停止」機能がないため、削除してスナップショットで保存します。
-
-```
-ElastiCacheコンソール → 「taskflow-redis」を選択
-→ 「アクション」→「削除」→ 「最終スナップショットを作成」にチェック
-→ スナップショット名: taskflow-redis-snapshot
+```bash
+terraform apply -auto-approve
 ```
 
-### Step 4: NAT Gateway を削除（Task 01 以降で作成した場合）⚠️ 最重要
-
+**期待される出力：**
 ```
-VPCコンソール → 「NAT ゲートウェイ」
-→ 「taskflow-nat」を選択 → 「アクション」→「NAT ゲートウェイを削除」
-→ ステータスが「Deleted」になるまで待つ（2〜3分）
+Destroy complete! Resources: 18 destroyed.
+Apply complete! Resources: 18 added, 0 changed, 0 destroyed.
 ```
 
-### Step 5: Elastic IP を解放（NAT Gateway 削除後）
-
-```
-VPCコンソール → 「Elastic IP アドレス」
-→ 未関連付けのEIPを選択 → 「アクション」→「Elastic IP アドレスの解放」
-```
-
-### Step 6: ALB を削除（Task 07 以降で作成した場合）
-
-```
-EC2コンソール → 「ロードバランサー」
-→ 「taskflow-alb」を選択 → 「アクション」→「削除」
-```
-
-> ターゲットグループはALBを削除しても残ります。課金対象ではないので残してOKです。
-
-### Step 7: 現在の進捗をメモする
-
-`tasks/PROGRESS.md` を確認し、どこまで完了したかを記録しておきましょう。
+> **トラブル:** `Error: error deleting security group` の場合は `terraform apply -auto-approve` → `terraform destroy -auto-approve` を実行
 
 ---
 
-## 再開手順（学習を再開するとき）
+## 朝：ECR ログイン
 
-削除したリソースを、進捗に合わせて順番に復旧します。
-
-### Step 1: 現在の状態を確認する
-
-```
-VPCコンソール → 「お使いのVPC」→ taskflow-vpc が存在するか確認
+```bash
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 ```
 
-VPC・サブネット・セキュリティグループは削除していなければそのまま残っています。
-
-### Step 2: NAT Gateway を再作成（Task 01 の内容）
-
-1. VPCコンソール（https://console.aws.amazon.com/vpc/）を開く
-2. 左メニュー → **「NAT ゲートウェイ」** → **「NAT ゲートウェイを作成」**
-3. 以下の設定を入力する：
-
-| 項目 | 値 | 補足 |
-|------|-----|------|
-| 名前 | `taskflow-nat` | Name タグが自動作成される |
-| アベイラビリティーモード | **ゾーナル** | devのシングルAZ構成のため。リージョナルは本番向け（EIP×3でコスト3倍） |
-| サブネット | `taskflow-public-a`（10.0.1.0/24） | ゾーナルを選ぶと「サブネット」選択UIが表示される。パブリックサブネットを選択（IGWへの経路があるため） |
-| 接続タイプ | **パブリック** | VPC内リソースがインターネットへ出るための設定 |
-| Elastic IP 割り当て | **「Elastic IP を割り当て」** をクリック | 新しい固定IPが自動で割り当てられる |
-
-> **アベイラビリティーモードの注意点：**
-> - **ゾーナル** を選ぶと → 「サブネット」選択UIが表示される（特定AZを指定）
-> - **リージョナル** を選ぶと → 「VPC」選択UIが表示される（3AZ分のEIPが自動確保されコスト3倍）
->
-> dev環境では必ず **ゾーナル** を選んでください。
-
-4. タグを追加する（「新しいタグを追加」をクリック）：
-
-| キー | 値 |
-|------|-----|
-| Name | taskflow-nat |
-| Environment | dev |
-| Project | taskflow |
-| ManagedBy | manual |
-
-5. **「NAT ゲートウェイを作成」** をクリック
-6. ステータスが **「Pending」→「Available」** になるまで待つ（約1〜2分）
-
-> **「Elastic IP を割り当て」ボタンについて：** Elastic IPの欄に既存のEIPがなければ、このボタンをクリックするだけで新しい固定IPが自動的に割り当てられ、フォームに反映されます。EC2コンソールで事前に確保しておく必要はありません。
-
-### Step 3: プライベートルートテーブルのNATを更新
-
-NAT Gatewayを再作成するとIDが変わります。ルートテーブルのターゲットを更新してください。
-
-```
-VPCコンソール → 「ルートテーブル」→「taskflow-private-rt」を選択
-→「ルート」タブ → 「ルートを編集」
-→ 0.0.0.0/0 のターゲットを新しい「nat-xxxxxxxx」に変更 → 保存
+```bash
+aws ecr get-login-password --region ap-northeast-1 | docker login --username AWS --password-stdin ${ACCOUNT_ID}.dkr.ecr.ap-northeast-1.amazonaws.com
 ```
 
-### Step 4: RDS を再起動（Task 03 以降）
-
-**停止していた場合（7日以内）：**
+**期待される出力：**
 ```
-RDSコンソール → 「taskflow-db」を選択 → 「アクション」→「起動」
+Login Succeeded
 ```
-
-**スナップショットから復元した場合：**
-```
-RDSコンソール → 「スナップショット」→ 対象を選択
-→「アクション」→「スナップショットを復元」
-→ 設定はtasks/console/03_rds.md を参照
-```
-
-### Step 5: ElastiCache を復元（Task 04 以降）
-
-```
-ElastiCacheコンソール → 「バックアップ」→「taskflow-redis-snapshot」を選択
-→「復元」→ 設定は tasks/console/04_elasticache.md を参照
-```
-
-### Step 6: ECS サービスを再起動（Task 08 以降）
-
-```
-ECSコンソール → クラスター「taskflow-cluster」
-→ サービスを選択 → 「更新」→ 必要なタスク数を元の値（例: 1）に戻す
-```
-
-### Step 7: ALB を再作成（Task 07 以降）
-
-ALBを削除した場合は `tasks/console/07_alb.md` の手順に従って再作成してください。
 
 ---
 
-## 現在の進捗と削除すべきリソース（Task別）
+## 朝：バックエンド Docker ビルド・プッシュ
 
-| 完了Task | 削除すべきリソース | 無料のリソース（残してOK） |
-|---------|-----------------|------------------------|
-| Task 01 | NAT Gateway、Elastic IP | VPC、サブネット、IGW、ルートテーブル |
-| Task 02 | （追加なし） | セキュリティグループ |
-| Task 03 | RDS（停止 or 削除） | DB サブネットグループ |
-| Task 04 | ElastiCache（削除＋スナップショット） | サブネットグループ |
-| Task 05 | （追加なし） | ECR リポジトリ（ストレージ少量は無料枠内） |
-| Task 06 | （追加なし） | ECS クラスター（タスクが0なら無料） |
-| Task 07 | ALB | ターゲットグループ |
-| Task 08 | ECS サービス（タスク数を0に） | タスク定義 |
-| Task 09 | （追加なし） | Cognito ユーザープール |
-| Task 10 | （追加なし） | S3、CloudFront（無料枠内なら） |
-| Task 11 | （追加なし） | GitHub Actions（無料枠内） |
-| Task 12 | （追加なし） | CloudWatch（無料枠内） |
+```bash
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+```
+
+```bash
+cd /Users/yuki-mac/claude-code/aws-demo/app/backend
+```
+
+```bash
+docker build -t taskflow-backend:latest .
+```
+
+```bash
+docker tag taskflow-backend:latest ${ACCOUNT_ID}.dkr.ecr.ap-northeast-1.amazonaws.com/taskflow/backend:latest
+```
+
+```bash
+docker push ${ACCOUNT_ID}.dkr.ecr.ap-northeast-1.amazonaws.com/taskflow/backend:latest
+```
 
 ---
 
-## AWS料金を確認する方法
+## 朝：フロントエンド Docker ビルド・プッシュ
 
-```
-AWSコンソール右上 → アカウント名 → 「請求とコスト管理」
-→「コストエクスプローラー」または「請求書」で確認
+```bash
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 ```
 
-意図しない課金がないか定期的に確認する習慣をつけましょう。
+```bash
+cd /Users/yuki-mac/claude-code/aws-demo/app/frontend
+```
+
+```bash
+docker build -t taskflow-frontend:latest .
+```
+
+```bash
+docker tag taskflow-frontend:latest ${ACCOUNT_ID}.dkr.ecr.ap-northeast-1.amazonaws.com/taskflow/frontend:latest
+```
+
+```bash
+docker push ${ACCOUNT_ID}.dkr.ecr.ap-northeast-1.amazonaws.com/taskflow/frontend:latest
+```
 
 ---
 
-> このファイルはタスクが進むにつれて更新してください。
-> 新しい課金リソースを作成したら、一時停止・再開手順に追記しておくと安心です。
+## 朝：RDS 初期化（オプション）
+
+```bash
+cd /Users/yuki-mac/claude-code/aws-demo/infra/environments/dev
+```
+
+```bash
+RDS_ENDPOINT=$(terraform output -raw rds_endpoint | cut -d: -f1)
+```
+
+```bash
+RDS_PASSWORD=$(terraform output -raw rds_password)
+```
+
+```bash
+PGPASSWORD=$RDS_PASSWORD psql -h $RDS_ENDPOINT -p 5432 -U postgres -f /Users/yuki-mac/claude-code/aws-demo/app/db/schema.sql
+```
+
+---
+
+## 朝：動作確認
+
+```bash
+cd /Users/yuki-mac/claude-code/aws-demo/infra/environments/dev
+```
+
+```bash
+ALB_DNS=$(terraform output -raw alb_dns_name)
+```
+
+```bash
+curl -s http://$ALB_DNS/api/health | jq .
+```
+
+```bash
+aws ecs describe-services \
+  --cluster taskflow-cluster \
+  --services taskflow-backend taskflow-frontend \
+  --region ap-northeast-1 \
+  --query 'services[].[serviceName, desiredCount, runningCount, status]' \
+  --output table
+```
+
+**期待される出力（API）：**
+```json
+{
+  "status": "ok",
+  "timestamp": "2026-04-15T12:34:56Z"
+}
+```
+
+**期待される出力（ECS）：**
+```
+| taskflow-backend  | 1 | 1 | ACTIVE |
+| taskflow-frontend | 1 | 1 | ACTIVE |
+```
+
+ブラウザで `http://$ALB_DNS` にアクセスしてフロントエンド表示確認
+
+---
+
+## 参考：リソース削除確認
+
+```bash
+aws ec2 describe-vpcs --filters "Name=tag:Name,Values=taskflow-vpc" --region ap-northeast-1 --query 'Vpcs[]' --output text
+```
+
+> **出力が空なら削除成功**
+
+---
+
+**所要時間：** 約 15〜20分（Docker ビルド含む）  
+**月額コスト削減：** 約 $51（NAT Gateway $33 + ALB $18）

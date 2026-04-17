@@ -5,7 +5,8 @@ resource "aws_ecr_repository" "backend" {
     scan_on_push = true
   }
 
-  image_tag_mutability = "IMMUTABLE"
+  # image_tag_mutability = "IMMUTABLE"
+  image_tag_mutability = "MUTABLE"
 
   tags = merge(local.common_tags, {
     Name = "taskflow-backend"
@@ -19,7 +20,8 @@ resource "aws_ecr_repository" "frontend" {
     scan_on_push = true
   }
 
-  image_tag_mutability = "IMMUTABLE"
+  # image_tag_mutability = "IMMUTABLE"
+  image_tag_mutability = "MUTABLE"
 
   tags = merge(local.common_tags, {
     Name = "taskflow-frontend"
