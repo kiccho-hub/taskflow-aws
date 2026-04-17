@@ -25,6 +25,12 @@ resource "aws_iam_role_policy_attachment" "ecs_execution" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
+# ECR プル权限をattach
+resource "aws_iam_role_policy_attachment" "ecs_execution_ecr_pull" {
+  role       = aws_iam_role.ecs_execution.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+}
+
 resource "aws_iam_role" "ecs_task" {
   name = "taskflow-ecs-task-role"
 
@@ -48,7 +54,7 @@ resource "aws_iam_role" "ecs_task" {
 
 # CloudWatch log groups for ECS services
 resource "aws_cloudwatch_log_group" "backend" {
-  name = "taskflow-backend-logs"
+  name              = "taskflow-backend-logs"
   retention_in_days = 30
 
   tags = merge(local.common_tags, {
@@ -57,7 +63,7 @@ resource "aws_cloudwatch_log_group" "backend" {
 }
 
 resource "aws_cloudwatch_log_group" "frontend" {
-  name = "taskflow-frontend-logs"
+  name              = "taskflow-frontend-logs"
   retention_in_days = 30
 
   tags = merge(local.common_tags, {
@@ -74,13 +80,18 @@ resource "aws_ecs_task_definition" "backend" {
   cpu                      = 256
   memory                   = 512
 
-  execution_role_arn       = aws_iam_role.ecs_execution.arn
-  task_role_arn            = aws_iam_role.ecs_task.arn
+  runtime_platform {
+    cpu_architecture        = "ARM64"
+    operating_system_family = "LINUX"
+  }
 
-  container_definitions    = jsonencode([
+  execution_role_arn = aws_iam_role.ecs_execution.arn
+  task_role_arn      = aws_iam_role.ecs_task.arn
+
+  container_definitions = jsonencode([
     {
-      name      = "backend"
-      image     = "${aws_ecr_repository.backend.repository_url}:latest"
+      name  = "backend"
+      image = "${aws_ecr_repository.backend.repository_url}:latest"
 
       portMappings = [
         {
@@ -90,10 +101,10 @@ resource "aws_ecs_task_definition" "backend" {
       ]
 
       environment = [
-        { name = "NODE_ENV",   value = "production" },
-        { name = "DB_HOST",    value = aws_db_instance.main.address },
-        { name = "DB_PORT",    value = "5432" },
-        { name = "DB_NAME",    value = "taskflow" },
+        { name = "NODE_ENV", value = "production" },
+        { name = "DB_HOST", value = aws_db_instance.main.address },
+        { name = "DB_PORT", value = "5432" },
+        { name = "DB_NAME", value = "taskflow" },
         { name = "REDIS_HOST", value = aws_elasticache_replication_group.main.primary_endpoint_address },
         { name = "REDIS_PORT", value = "6379" },
       ]
@@ -101,8 +112,8 @@ resource "aws_ecs_task_definition" "backend" {
       logConfiguration = {
         logDriver = "awslogs"
         options = {
-          "awslogs-group"        = aws_cloudwatch_log_group.backend.name
-          "awslogs-region"       = "ap-northeast-1"
+          "awslogs-group"         = aws_cloudwatch_log_group.backend.name
+          "awslogs-region"        = "ap-northeast-1"
           "awslogs-stream-prefix" = "ecs"
         }
       }
@@ -111,19 +122,24 @@ resource "aws_ecs_task_definition" "backend" {
 }
 
 #
-resource "aws_ecs_task_definition" "frontend"{
+resource "aws_ecs_task_definition" "frontend" {
   family                   = "taskflow-frontend"
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
   cpu                      = 256
   memory                   = 512
 
-  execution_role_arn       = aws_iam_role.ecs_execution.arn
+  runtime_platform {
+    cpu_architecture        = "ARM64"
+    operating_system_family = "LINUX"
+  }
 
-  container_definitions    = jsonencode([
+  execution_role_arn = aws_iam_role.ecs_execution.arn
+
+  container_definitions = jsonencode([
     {
-      name      = "frontend"
-      image     = "${aws_ecr_repository.frontend.repository_url}:latest"
+      name  = "frontend"
+      image = "${aws_ecr_repository.frontend.repository_url}:latest"
 
       portMappings = [
         {
@@ -139,8 +155,8 @@ resource "aws_ecs_task_definition" "frontend"{
       logConfiguration = {
         logDriver = "awslogs"
         options = {
-          "awslogs-group"        = aws_cloudwatch_log_group.frontend.name
-          "awslogs-region"       = "ap-northeast-1"
+          "awslogs-group"         = aws_cloudwatch_log_group.frontend.name
+          "awslogs-region"        = "ap-northeast-1"
           "awslogs-stream-prefix" = "ecs"
         }
       }
@@ -149,23 +165,23 @@ resource "aws_ecs_task_definition" "frontend"{
 }
 
 resource "aws_ecs_service" "backend" {
-  name = "taskflow-backend-svc"
-  cluster = aws_ecs_cluster.main.id
-  task_definition = aws_ecs_task_definition.backend.id
-  desired_count = 1
+  name            = "taskflow-backend-svc"
+  cluster         = aws_ecs_cluster.main.id
+  task_definition = aws_ecs_task_definition.backend.arn
+  desired_count   = 1
 
   launch_type = "FARGATE"
 
   network_configuration {
-    subnets = [aws_subnet.private_a.id, aws_subnet.private_c.id]
-    security_groups = [aws_security_group.ecs_backend.id]
+    subnets          = [aws_subnet.private_a.id, aws_subnet.private_c.id]
+    security_groups  = [aws_security_group.ecs_backend.id]
     assign_public_ip = false
   }
 
   load_balancer {
     target_group_arn = aws_lb_target_group.backend.arn
-    container_name = "backend"
-    container_port = 3000
+    container_name   = "backend"
+    container_port   = 3000
   }
 
   force_new_deployment = true
