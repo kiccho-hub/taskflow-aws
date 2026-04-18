@@ -88,6 +88,21 @@ resource "aws_iam_role_policy" "github_actions" {
         Action   = ["cloudfront:CreateInvalidation"]
         Resource = aws_cloudfront_distribution.frontend.arn
       },
+      {
+        # ★追加：ECSに渡すIAMロールのPassRole権限
+        Effect = "Allow"
+        Action = "iam:PassRole"
+        Resource = [
+          "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/ecsTaskExecutionRole",
+          # 必要ならタスクロールも：
+          # "arn:aws:iam::...:role/ecsTaskRole",
+        ]
+        Condition = {
+          StringEquals = {
+            "iam:PassedToService" = "ecs-tasks.amazonaws.com"
+          }
+        }
+      }
     ]
   })
 }
