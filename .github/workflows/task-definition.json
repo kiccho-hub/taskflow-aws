@@ -5,6 +5,10 @@
   "cpu": "256",
   "memory": "512",
   "executionRoleArn": "arn:aws:iam::840854900854:role/ecsTaskExecutionRole",
+  "runtimePlatform": {
+    "cpuArchitecture": "ARM64",
+    "operatingSystemFamily": "LINUX"
+  },
   "containerDefinitions": [
     {
       "name": "backend",
@@ -15,10 +19,18 @@
           "protocol": "tcp"
         }
       ],
+      "environment": [
+        { "name": "NODE_ENV", "value": "production" },
+        { "name": "DB_HOST", "value": "taskflow-db.cbiagaymyb5k.ap-northeast-1.rds.amazonaws.com" },
+        { "name": "DB_PORT", "value": "5432" },
+        { "name": "DB_NAME", "value": "taskflow" },
+        { "name": "REDIS_HOST", "value": "master.taskflow-valkey.istfek.apne1.cache.amazonaws.com" },
+        { "name": "REDIS_PORT", "value": "6379" }
+      ],
       "logConfiguration": {
         "logDriver": "awslogs",
         "options": {
-          "awslogs-group": "/ecs/taskflow-backend",
+          "awslogs-group": "taskflow-backend-logs",
           "awslogs-region": "ap-northeast-1",
           "awslogs-stream-prefix": "ecs"
         }
