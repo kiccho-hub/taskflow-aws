@@ -59,17 +59,29 @@ resource "aws_iam_role_policy" "github_actions" {
         Resource = "*" # 本番では特定のクラスター・サービスのARNに絞る
       },
       {
-        # ECRへのイメージpushに必要な権限
+        # ECR: docker login 用（リポジトリ指定不可なのでResource="*"）
+        Effect   = "Allow"
+        Action   = ["ecr:GetAuthorizationToken"]
+        Resource = "*"
+      },
+      {
+        # ECR: pull + push + マニフェスト確認に必要な一式
         Effect = "Allow"
         Action = [
-          "ecr:GetAuthorizationToken",
           "ecr:BatchCheckLayerAvailability",
-          "ecr:PutImage",
+          "ecr:BatchGetImage",             # ★buildxのHEAD確認に必要
+          "ecr:GetDownloadUrlForLayer",    # ★レイヤー差分取得に必要
           "ecr:InitiateLayerUpload",
           "ecr:UploadLayerPart",
           "ecr:CompleteLayerUpload",
+          "ecr:PutImage",
+          "ecr:DescribeImages",
+          "ecr:ListImages",
         ]
-        Resource = "*"
+        Resource = [
+          "arn:aws:ecr:ap-northeast-1:${data.aws_caller_identity.current.account_id}:repository/taskflow/backend",
+          "arn:aws:ecr:ap-northeast-1:${data.aws_caller_identity.current.account_id}:repository/taskflow/frontend",
+        ]
       },
       {
         # S3へのフロントエンドデプロイに必要な権限
