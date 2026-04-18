@@ -36,6 +36,8 @@ jobs:
           context: ./backend
           platforms: linux/arm64
           push: true
+          provenance: false   # ECRに余計な attestation manifest を送らない
+          sbom: false         # SBOM attestationも無効化
           tags: ${{ secrets.ECR_REGISTRY }}/taskflow/backend:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -52,7 +54,7 @@ jobs:
         uses: aws-actions/amazon-ecs-deploy-task-definition@v1
         with:
           task-definition: ${{ steps.task-def.outputs.task-definition }}
-          service: taskflow-backend-service-8zr92cb4
+          service: taskflow-backend-svc
           cluster: taskflow-cluster
           wait-for-service-stability: true
 
