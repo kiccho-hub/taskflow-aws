@@ -15,7 +15,7 @@
 | 8 | ECS サービス + タスク定義 | ⬜ | ★★★★☆ | ★★★★☆ |
 | 9 | Cognito 認証 | ⬜ | ★★★★☆ | ★★★★☆ |
 | 10 | S3 + CloudFront | ⬜ | ★★★★☆ | ★★★★☆ |
-| 11 | CI/CD パイプライン | ⬜ | ★★★★☆ | ⬜ |
+| 11 | CI/CD パイプライン | ⬜ | ★★★★☆ | ★★★★☆ |
 | 12 | CloudWatch 監視 | ⬜ | ★★★★☆ | ⬜ |
 
 ## 凡例
@@ -61,3 +61,7 @@
 - **Task 5 IaC** ★★★★☆（88点）：ECR リポジトリの Terraform 実装を完了。`aws_ecr_repository` (backend・frontend) と `aws_ecr_lifecycle_policy` の4リソースを正確に定義。`locals` で `ecr_lifecycle_policy` を共通化した DRY 設計が秀逸。`IMMUTABLE + scan_on_push` でセキュリティベストプラクティスを完全に押さえ、`outputs.tf` に ECR URL も追加。改善点：ecr.tf へのコメント追加・`encryption_configuration` の明示。
 - **Task 6 IaC** ★★★☆☆（78点）：ECSクラスター + キャパシティプロバイダーのTerraform実装。Container Insights有効化・FARGATE_SPOT先読み登録・クラスター参照が正確。要修正：`name` タグが小文字（Name が正）・`base = 0` は `base = 1` が正しい・IAMロール未実装（Task 8 前に追加要）。繰り返しミス：`Name` タグ大文字確認チェックリストの習慣化が必要。
 - **Task 7 IaC** ★★★★★（97点）：ALB・パスベースルーティングの Terraform 実装を完了。`aws_lb_listener`（ポート・デフォルトアクション）と `aws_lb_listener_rule`（パス条件・Priority）の概念を完全に理解し、正確に実装。Priority 値（100 < 65535）の大小関係を完璧に押さえ、Frontend デフォルト・/api/* → Backend の設計が秀逸。ターゲットグループは target_type = "ip"・health_check 設定が充実。出力値（ALB DNS・TG ARN）も Task 8連携を見据えて適切。改善点：alb.tf へのコメント追加・ヘルスチェック matcher の判断ロジック明示。
+
+### 2026-04-17
+
+- **Task 11 IaC** ★★★★☆（88点）：GitHub Actions + AWS OIDC による CI/CD パイプラインを Terraform で実装完了。`data "tls_certificate"` による thumbprint 動的取得・StringLike で main ブランチ限定 Trust Policy・ECR Resource を特定 ARN に絞った最小権限設計・`iam:PassedToService` 条件付き PassRole を全て正確に実装。10個のエラー（OIDC重複・型エラー・PassRole・S3名前ズレ・ECR 403×2・ARM64・ECS名前ズレ・ログ未コミット・STS）を全て自力でデバッグ突破。改善点：`task-definition.json` 修正後のコミット忘れ（ローカル編集≠push済みの意識）・複数サービスまたぐ設定値の名前統一チェックリスト活用。
