@@ -53,3 +53,9 @@ variable "elasticache_parameter_group_name" {
   description = "ElastiCache パラメータグループ名（ファミリー valkey8 対応）"
   default     = "taskflow-valkey8"
 }
+
+variable "github_repository" {
+  description = "Github repository in format 'owner/repo'"
+  type        = string
+  default     = "kiccho-hub/taskflow-aws"
+}
