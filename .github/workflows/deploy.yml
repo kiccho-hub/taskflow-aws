@@ -2,7 +2,7 @@ name: Deploy to AWS
 
 on:
   push:
-    # branches: [main] # mainへのpushでのみ実行
+    branches: [main] # mainへのpushでのみ実行
 
 permissions:
   id-token: write # OIDC認証のためのJWT発行を許可（必須）
@@ -29,7 +29,7 @@ jobs:
           ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          docker build -t $ECR_REGISTRY/taskflow/backend:$IMAGE_TAG ./backend
+          docker build --platform linux/arm64 -t $ECR_REGISTRY/taskflow/backend:$IMAGE_TAG ./backend
           docker push $ECR_REGISTRY/taskflow/backend:$IMAGE_TAG
 
       - name: Update ECS task definition with new image

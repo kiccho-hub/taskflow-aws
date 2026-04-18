@@ -15,3 +15,4 @@
 - [2026/04/14 Task3 RDS PostgreSQL IaC A評価](result_20260414_rds_iac.md) — 総合評価88/100点、得意：3点セット完全実装・コメント品質・sensitive変数保護、要改善：.tfvars管理・storage_encrypted追加
 - [2026/04/14 Task5 ECR IaC A評価](result_20260414_ecr_iac.md) — 総合評価88/100点、得意：localsでのDRY原則・IMMUTABLE+scan_on_push・outputs先読み設計、要改善：ecr.tfコメント密度・encryption_configuration明示
 - [2026/04/14 Task6 ECSクラスター IaC B評価](result_20260414_ecs_cluster_iac.md) — 総合評価78/100点、得意：Container Insights設定・FARGATE_SPOT先読み登録、要修正：Nameタグ大文字（3回目）・base=0→1・IAMロール未実装
+- [2026/04/17 Task10 S3+CloudFront IaC A評価](result_20260417_s3_cloudfront_iac.md) — 総合評価87/100点、得意：多Origin設計・OAC+SigV4・custom_error_response落とし穴理解・ARM64デバッグ、苦手：ファイル名タイポ・terraform output dir確認
