@@ -2,7 +2,8 @@ name: Deploy to AWS
 
 on:
   push:
-    branches: [main] # mainへのpushでのみ実行
+    branches: [hoge] # mainへのpushでのみ実行
+    # branches: [main] # mainへのpushでのみ実行
 
 permissions:
   id-token: write # OIDC認証のためのJWT発行を許可（必須）
@@ -36,8 +37,8 @@ jobs:
           context: ./backend
           platforms: linux/arm64
           push: true
-          provenance: false   # ECRに余計な attestation manifest を送らない
-          sbom: false         # SBOM attestationも無効化
+          provenance: false # ECRに余計な attestation manifest を送らない
+          sbom: false # SBOM attestationも無効化
           tags: ${{ secrets.ECR_REGISTRY }}/taskflow/backend:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
